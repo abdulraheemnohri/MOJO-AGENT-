@@ -112,7 +112,7 @@ def validate_settings(req:SettingsInput):
  if values.get('litertlm_backend') not in (None,'cpu','gpu'):raise HTTPException(400,'litertlm_backend must be cpu or gpu')
  if values.get('litertlm_enabled') not in (None,True,False):raise HTTPException(400,'litertlm_enabled must be boolean')
  if values.get('litertlm_timeout_seconds') is not None and not 10<=values['litertlm_timeout_seconds']<=180:raise HTTPException(400,'litertlm_timeout_seconds must be 10-180')
- if values.get('runtime_mode') in ('hybrid','litertlm') and values.get('litertlm_enabled') is False:raise HTTPException(400,'Hybrid and LiteRT-LM modes require the optional runtime enabled')
+ if values.get('runtime_mode') in ('hybrid','litertlm') and not values.get('litertlm_enabled',settings.get()['litertlm_enabled']):raise HTTPException(400,'Hybrid and LiteRT-LM modes require the optional runtime enabled')
  if values.get('tool_approval_required') not in (None,True): raise HTTPException(400,'tool_approval_required must be boolean')
  return {'valid':True,'accepted_fields':sorted(values),'restart_required':False,'protected_invariants':{'tool_approval_required':True,'llm_enabled':False,'source_self_modification':False}}
 def _discover_ipv4_addresses():
@@ -303,7 +303,7 @@ def import_memory(req:MemoryImport):
 @app.get('/api/v1/agent/runtime')
 def agent_runtime_status():
  result=agent_runtime.status();prefs=settings.get()
- result.update({'configured_mode':prefs['runtime_mode'],'litertlm_enabled':prefs['litertlm_enabled'],'configured_model':prefs['litertlm_model'],'configured_backend':prefs['litertlm_backend']})
+ result.update({'active_mode':prefs['runtime_mode'],'configured_mode':prefs['runtime_mode'],'litertlm_enabled':prefs['litertlm_enabled'],'configured_model':prefs['litertlm_model'],'configured_backend':prefs['litertlm_backend']})
  return result
 
 @app.post('/api/v1/agent/run')
