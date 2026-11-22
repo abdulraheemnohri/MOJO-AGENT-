@@ -126,6 +126,9 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var servers by remember { mutableStateOf(listOf<String>()) }
  var scanning by remember { mutableStateOf(false) }
  var output by remember { mutableStateOf("Connect to your local MOJO AGENT service.") }
+ var runtimeSummary by remember { mutableStateOf("Runtime metrics not loaded yet.") }
+ var compactMode by remember { mutableStateOf(false) }
+ var showAdvanced by remember { mutableStateOf(false) }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
@@ -159,6 +162,18 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    "Backend Control" -> {
     Text("Backend control centre", style = MaterialTheme.typography.titleLarge)
     Text("Inspect the API, discover LAN interfaces, and review runtime configuration. Process start/stop is managed by the host operating system.")
+    ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+     Text("Runtime monitor", style = MaterialTheme.typography.titleMedium)
+     Text(runtimeSummary, style = MaterialTheme.typography.bodySmall)
+     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedButton(onClick = { request("/runtime/status") }, enabled = !busy) { Text("Refresh metrics") }
+      OutlinedButton(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Diagnostics") }
+     }
+    } }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { request("/settings/validate", "POST", JSONObject().put("theme", theme).put("tool_approval_required", true).toString()) }, enabled = !busy) { Text("Validate settings") }
+     OutlinedButton(onClick = { request("/backup/export") }, enabled = !busy) { Text("Backup endpoint") }
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { request("/health") }, enabled = !busy) { Text("Health check") }; OutlinedButton(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Diagnostics") } }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { request("/discovery") }, enabled = !busy) { Text("Server discovery") }; OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load settings") } }
     Text("Connection address", style = MaterialTheme.typography.titleMedium)
@@ -261,6 +276,12 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    }
    "Settings" -> {
     Text("Runtime settings", style = MaterialTheme.typography.titleLarge)
+    ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+     Text("Interface preferences", style = MaterialTheme.typography.titleMedium)
+     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Compact spacing", Modifier.weight(1f)); Switch(checked = compactMode, onCheckedChange = { compactMode = it }) }
+     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Advanced controls", Modifier.weight(1f)); Switch(checked = showAdvanced, onCheckedChange = { showAdvanced = it }) }
+     if (showAdvanced) Text("Advanced mode exposes diagnostic and configuration validation actions. Protected safety settings remain locked.", style = MaterialTheme.typography.bodySmall)
+    } }
     Text("Theme preference")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
      listOf("dark", "light", "system").forEach { value ->
@@ -271,6 +292,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
      Button(onClick = { request("/settings", "PATCH", JSONObject().put("theme", theme).toString()) }, enabled = !busy) { Text("Save settings") }
      OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load settings") }
     }
+    if (showAdvanced) OutlinedButton(onClick = { request("/settings/validate", "POST", JSONObject().put("theme", theme).put("tool_approval_required", true).toString()) }, enabled = !busy) { Text("Validate current configuration") }
     Text("Security: local API only. Tools require explicit approval. Shell execution and source self-modification remain disabled.")
    }
   }

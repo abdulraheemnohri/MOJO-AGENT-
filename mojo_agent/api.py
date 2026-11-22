@@ -1,4 +1,4 @@
-from fastapi import FastAPI,HTTPException
+from fastapi import FastAPI,HTTPException,Response
 from fastapi.middleware.cors import CORSMiddleware
 import socket
 from pydantic import BaseModel,Field
@@ -12,10 +12,10 @@ from .workflows import WorkflowStore
 from .knowledge import KnowledgeGraph
 from .analytics import Analytics
 from .settings import SettingsStore
-import math,uuid,time,platform
+import math,uuid,time,platform,os,sqlite3,threading,hashlib
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
-memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={}
+memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={};RUNTIME_STARTED_AT=time.time()
 class Goal(BaseModel):goal:str=Field(min_length=1,max_length=2000)
 class MemoryInput(BaseModel):content:str=Field(min_length=1,max_length=10000);kind:str='episodic';importance:float=Field(default=.5,ge=0,le=1)
 class QInput(BaseModel):q:float;reward:float;next_max:float=0;alpha:float=Field(default=.1,ge=0,le=1);gamma:float=Field(default=.95,ge=0,le=1)
@@ -39,6 +39,41 @@ async def collect_safe_analytics(request, call_next):
  return response
 @app.get('/api/v1/health')
 def health():return {'status':'ok','name':'MOJO AGENT','version':'0.9.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
+@app.get('/api/v1/runtime/status')
+def runtime_status():
+ db_path=str(memory.path)
+ db_bytes=os.path.getsize(db_path) if os.path.exists(db_path) else 0
+ with sqlite3.connect(db_path,timeout=5) as conn:
+  integrity=conn.execute('PRAGMA quick_check').fetchone()[0]
+  table_names={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+  counts={}
+  for table in ('memories','workflows','workflow_runs','workflow_schedules','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates'):
+   if table in table_names: counts[table]=conn.execute('SELECT COUNT(*) FROM "'+table+'"').fetchone()[0]
+ schedules=workflows.list_schedules()
+ return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':False,'execution_mode':'manual tick endpoint'},'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
+@app.get('/api/v1/backup/export')
+def export_database_backup():
+ db_path=str(memory.path)
+ if not os.path.exists(db_path): raise HTTPException(404,'Database file does not exist yet')
+ try:
+  with sqlite3.connect(db_path,timeout=10) as source:
+   with sqlite3.connect(':memory:') as target:
+    source.backup(target)
+    integrity=target.execute('PRAGMA integrity_check').fetchone()[0]
+    if integrity!='ok': raise HTTPException(500,'Database integrity check failed; backup was not created')
+    payload=target.serialize()
+ except sqlite3.Error as exc: raise HTTPException(500,'Database backup failed: '+str(exc)[:200])
+ digest=hashlib.sha256(payload).hexdigest()
+ return Response(content=payload,media_type='application/vnd.sqlite3',headers={'Content-Disposition':'attachment; filename="mojo-agent-backup.sqlite3"','X-Backup-SHA256':digest,'X-Backup-Size':str(len(payload))})
+@app.post('/api/v1/settings/validate')
+def validate_settings(req:SettingsInput):
+ values=req.model_dump(exclude_unset=True)
+ unsupported=set(values)-{'theme','tool_approval_required'}
+ if unsupported: raise HTTPException(400,'These settings require a service restart or are not remotely editable: '+', '.join(sorted(unsupported)))
+ if values.get('theme') not in (None,'dark','light','system'): raise HTTPException(400,'theme must be dark, light or system')
+ if values.get('tool_approval_required') is False: raise HTTPException(400,'Tool approval is mandatory and cannot be disabled')
+ if values.get('tool_approval_required') not in (None,True): raise HTTPException(400,'tool_approval_required must be boolean')
+ return {'valid':True,'accepted_fields':sorted(values),'restart_required':False,'protected_invariants':{'tool_approval_required':True,'llm_enabled':False,'source_self_modification':False}}
 def _discover_ipv4_addresses():
  addresses=[]
  try:
