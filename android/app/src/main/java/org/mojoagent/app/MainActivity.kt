@@ -1,9 +1,11 @@
 package org.mojoagent.app
 
 import android.os.Bundle
+import android.os.Environment
 import android.content.Context
 import android.net.wifi.WifiManager
 import java.net.InetAddress
+import java.io.File
 import java.net.NetworkInterface
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -16,6 +18,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -94,8 +98,18 @@ class MainActivity : ComponentActivity() {
    override fun onFailure(call: Call, e: IOException) { runOnUiThread { done("Connection failed: " + (e.message ?: "unknown error")) } }
    override fun onResponse(call: Call, response: Response) {
     response.use {
-     val text = it.body?.string() ?: ""
-     runOnUiThread { done(if (it.isSuccessful) text else "HTTP ${it.code}: $text") }
+     if (path == "/backup/export" && it.isSuccessful) {
+      val bytes = it.body?.bytes() ?: byteArrayOf()
+      val directory = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: filesDir
+      val backupFile = File(directory, "mojo-agent-backup.sqlite3")
+      backupFile.writeBytes(bytes)
+      runOnUiThread { done("Database backup saved to: " + backupFile.absolutePath + " (" + bytes.size + " bytes)") }
+     } else {
+      val text = it.body?.string() ?: ""
+      runOnUiThread {
+done(if (it.isSuccessful) text else "HTTP " + it.code + ": " + text)
+      }
+     }
     }
    }
   })
@@ -104,7 +118,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, discover: ((List<String>) -> Unit) -> Unit) {
- var base by remember { mutableStateOf("http://10.0.2.2:8766/api/v1") }
+ val context = LocalContext.current
+ var base by remember { mutableStateOf(context.getSharedPreferences("mojo", Context.MODE_PRIVATE).getString("api_base", "http://10.0.2.2:8766/api/v1") ?: "http://10.0.2.2:8766/api/v1") }
  var tab by remember { mutableStateOf("Home") }
  var goal by remember { mutableStateOf("Create a project plan") }
  var memoryText by remember { mutableStateOf("") }
@@ -123,27 +138,62 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var servers by remember { mutableStateOf(listOf<String>()) }
  var scanning by remember { mutableStateOf(false) }
  var output by remember { mutableStateOf("Connect to your local MOJO AGENT service.") }
+ var runtimeSummary by remember { mutableStateOf("Runtime metrics not loaded yet.") }
+ var compactMode by remember { mutableStateOf(false) }
+ var showAdvanced by remember { mutableStateOf(false) }
  var busy by remember { mutableStateOf(false) }
+ val drawerState = rememberDrawerState(DrawerValue.Closed)
+ val scope = rememberCoroutineScope()
+ val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Runtime Logs", "Backend Control", "Settings")
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
-  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { theme = JSONObject(it).optString("theme", theme) } catch (_: Exception) { } }; busy = false }
+  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { theme = JSONObject(it).optString("theme", theme) } catch (_: Exception) { } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
  }
  MaterialTheme(colorScheme = if (theme == "light" || (theme == "system" && !isSystemInDarkTheme())) lightColorScheme() else darkColorScheme()) {
- Column(Modifier.fillMaxSize().widthIn(max = 960.dp).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-  Text("MOJO AGENT", style = MaterialTheme.typography.headlineMedium)
-  Text("Algorithmic intelligence · local-first · no LLM required")
-  OutlinedTextField(base, { base = it }, label = { Text("Backend API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+ ModalNavigationDrawer(drawerState = drawerState, drawerContent = { ModalDrawerSheet {
+  Text("MOJO AGENT", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(20.dp))
+  Text("NAVIGATION", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+  menuItems.forEach { item -> NavigationDrawerItem(label = { Text(item) }, selected = tab == item, onClick = { tab = item; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 10.dp)) }
+  Divider(modifier = Modifier.padding(12.dp))
+  Text("Local-first · protected core", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(20.dp))
+ } }) {
+ Column(Modifier.fillMaxSize().widthIn(max = 960.dp).verticalScroll(rememberScrollState()).padding(if (compactMode) 12.dp else 18.dp), verticalArrangement = Arrangement.spacedBy(if (compactMode) 8.dp else 12.dp)) {
+  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+   TextButton(onClick = { scope.launch { drawerState.open() } }) { Text("☰ Menu") }
+   Column(Modifier.weight(1f)) { Text("MOJO AGENT", style = MaterialTheme.typography.headlineMedium); Text("Algorithmic intelligence · local-first") }
+   Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.small) { Text("v0.9", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall) }
+  }
+  OutlinedTextField(base, { base = it }, label = { Text("Backend API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true, supportingText = { Text("Saved locally on this device") })
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
    OutlinedButton(onClick = { scanning = true; discover { servers = it; scanning = false } }, enabled = !busy && !scanning) { Text(if (scanning) "Scanning LAN…" else "Find backend on Wi-Fi") }
    OutlinedButton(onClick = { request("/discovery") }, enabled = !busy) { Text("Server info") }
+   OutlinedButton(onClick = { context.getSharedPreferences("mojo", Context.MODE_PRIVATE).edit().putString("api_base", base.trimEnd('/')).apply(); output = "Backend address saved on this device." }, enabled = base.startsWith("http")) { Text("Save URL") }
   }
   servers.forEach { server -> OutlinedButton(onClick = { base = server; request("/health") }, modifier = Modifier.fillMaxWidth()) { Text("Use $server") } }
-  Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-   listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Settings").forEach { item ->
-    FilterChip(selected = tab == item, onClick = { tab = item }, label = { Text(item) })
-   }
-  }
   when (tab) {
+   "Backend Control" -> {
+    Text("Backend control centre", style = MaterialTheme.typography.titleLarge)
+    Text("Inspect the API, discover LAN interfaces, and review runtime configuration. Process start/stop is managed by the host operating system.")
+    ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+     Text("Runtime monitor", style = MaterialTheme.typography.titleMedium)
+     Text(runtimeSummary, style = MaterialTheme.typography.bodySmall)
+     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedButton(onClick = { request("/runtime/status") }, enabled = !busy) { Text("Refresh metrics") }
+      OutlinedButton(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Diagnostics") }
+     }
+    } }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { request("/settings/validate", "POST", JSONObject().put("theme", theme).put("tool_approval_required", true).toString()) }, enabled = !busy) { Text("Validate settings") }
+     OutlinedButton(onClick = { request("/backup/export") }, enabled = !busy) { Text("Export backup (local / USB)") }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { request("/health") }, enabled = !busy) { Text("Health check") }; OutlinedButton(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Diagnostics") } }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { request("/discovery") }, enabled = !busy) { Text("Server discovery") }; OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load settings") } }
+    Text("Database backup is limited to loopback connections. For Android, use USB port forwarding (adb reverse) to reach the local backend securely.", style = MaterialTheme.typography.bodySmall)
+    Text("Connection address", style = MaterialTheme.typography.titleMedium)
+    OutlinedTextField(base, { base = it }, label = { Text("API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+    Button(onClick = { context.getSharedPreferences("mojo", Context.MODE_PRIVATE).edit().putString("api_base", base.trimEnd('/')).apply(); request("/health") }, enabled = !busy && base.startsWith("http")) { Text("Save and test connection") }
+    Text("LAN mode requires the backend to be explicitly started with --host 0.0.0.0 on a trusted private network. Do not expose port 8766 to the internet.")
+   }
    "Home" -> {
     Text("Runtime", style = MaterialTheme.typography.titleLarge)
     Button(onClick = { request("/health") }, enabled = !busy) { Text("Check backend") }
@@ -223,6 +273,14 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
     Button(onClick = { request("/tools") }, enabled = !busy) { Text("Load available tools") }
     Text("Tool execution requires explicit approval. Shell commands are not available.")
    }
+   "Runtime Logs" -> {
+    Text("Runtime event log", style = MaterialTheme.typography.titleLarge)
+    Text("Bounded in-memory events. Request bodies and credentials are not recorded.", style = MaterialTheme.typography.bodySmall)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/runtime/logs?limit=200") }, enabled = !busy) { Text("Refresh logs") }
+     OutlinedButton(onClick = { request("/runtime/logs/clear", "POST", "{}") }, enabled = !busy) { Text("Clear logs") }
+    }
+   }
    "Diagnostics" -> {
     Text("Runtime diagnostics", style = MaterialTheme.typography.titleLarge)
     Button(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Run diagnostics") }
@@ -239,6 +297,12 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    }
    "Settings" -> {
     Text("Runtime settings", style = MaterialTheme.typography.titleLarge)
+    ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+     Text("Interface preferences", style = MaterialTheme.typography.titleMedium)
+     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Compact spacing", Modifier.weight(1f)); Switch(checked = compactMode, onCheckedChange = { compactMode = it }) }
+     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Advanced controls", Modifier.weight(1f)); Switch(checked = showAdvanced, onCheckedChange = { showAdvanced = it }) }
+     if (showAdvanced) Text("Advanced mode exposes diagnostic and configuration validation actions. Protected safety settings remain locked.", style = MaterialTheme.typography.bodySmall)
+    } }
     Text("Theme preference")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
      listOf("dark", "light", "system").forEach { value ->
@@ -249,6 +313,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
      Button(onClick = { request("/settings", "PATCH", JSONObject().put("theme", theme).toString()) }, enabled = !busy) { Text("Save settings") }
      OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load settings") }
     }
+    if (showAdvanced) OutlinedButton(onClick = { request("/settings/validate", "POST", JSONObject().put("theme", theme).put("tool_approval_required", true).toString()) }, enabled = !busy) { Text("Validate current configuration") }
     Text("Security: local API only. Tools require explicit approval. Shell execution and source self-modification remain disabled.")
    }
   }
@@ -258,6 +323,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    Text(output, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
   }
   }
+ }
  }
  if (confirmApproval) AlertDialog(
   onDismissRequest = { confirmApproval = false },
