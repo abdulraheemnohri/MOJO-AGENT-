@@ -366,3 +366,16 @@ def run_installed_skill(name:str,req:Goal):
  except KeyError:raise HTTPException(404,'Skill not installed')
  tasks=decompose_goal(req.goal);order=topological_order({task['id']:task['depends_on'] for task in tasks})
  return {'skill':name,'instructions':manifest['instructions'],'allowed_tools':manifest.get('tools',[]),'goal':req.goal,'algorithm_plan':{'tasks':tasks,'execution_order':order},'execution':'instructions and plan only; tools are not auto-executed'}
+
+
+@app.post('/api/v1/litertlm/benchmark')
+def litertlm_benchmark(req:AgentRunInput):
+ prefs=settings.get()
+ if not prefs['litertlm_enabled']:raise HTTPException(400,'LiteRT-LM is disabled in settings')
+ model=req.model or prefs['litertlm_model']
+ if not model:raise HTTPException(400,'Configure a local model or Hugging Face model id first')
+ try:
+  agent_runtime.model_runtime.timeout_seconds=prefs['litertlm_timeout_seconds']
+  return agent_runtime.model_runtime.benchmark(model,approved=req.approved)
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except (ValueError,LiteRTLMError) as exc:raise HTTPException(400,str(exc))
