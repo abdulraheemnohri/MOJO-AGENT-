@@ -27,7 +27,7 @@ export default function App(){
  const saveSettings=()=>run(()=>request('/settings',{theme},'PATCH'));
  const saveRuntimeSettings=()=>run(async()=>{const d=await request('/settings',{runtime_mode:agentMode,litertlm_enabled:runtimeEnabled,litertlm_model:modelInput,litertlm_backend:'cpu',litertlm_timeout_seconds:120},'PATCH');await load();return d});
  const previewExtension=()=>run(async()=>{const d=await request('/extensions/github/preview',{repository:githubRepo,ref:githubRef,manifest_path:manifestPath});setExtensionPreview(d);return d});
- const installExtension=()=>run(async()=>{const d=await request('/extensions/github/install',{repository:githubRepo,ref:githubRef,manifest_path:manifestPath});setExtensionPreview(null);await load();return d});
+ const installExtension=()=>run(async()=>{const d=await request('/extensions/github/install',{repository:githubRepo,ref:githubRef,manifest_path:manifestPath,expected_sha256:extensionPreview?.manifest_sha256});setExtensionPreview(null);await load();return d});
  const removeExtension=(id:string)=>run(async()=>{const d=await request('/extensions/'+encodeURIComponent(id),undefined,'DELETE');await load();return d});
  const runAgent=()=>run(async()=>{const d=await request('/agent/run',{goal,mode:agentMode,model:modelInput,backend:'cpu',approved:modelApproval});return d});
  const saveConnection=()=>{localStorage.setItem('mojo-api-base',apiBase.replace(/\/$/,''));setNotice('Backend address saved on this device')};
