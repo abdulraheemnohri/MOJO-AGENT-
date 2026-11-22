@@ -6,77 +6,65 @@ Algorithm-first, local-first autonomous agent runtime. **No LLM is required or l
 
 ### Windows 10/11 (PowerShell)
 ```powershell
+git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+cd MOJO-AGENT-
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install_all.ps1
-# Terminal 1
-.\scripts\run_backend.ps1
-# Terminal 2
-.\scripts\run_frontend.ps1
 ```
+Start in two terminals: ` .\scripts\run_backend.ps1 ` and ` .\scripts\run_frontend.ps1 `.
 
 ### Linux / macOS
 ```bash
+git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_all.sh
-# Terminal 1
-./scripts/run_backend.sh
-# Terminal 2
-./scripts/run_frontend.sh
 ```
+Start in two terminals: `./scripts/run_backend.sh` and `./scripts/run_frontend.sh`.
 
-Backend API: http://127.0.0.1:8766/api/v1/health
-API docs: http://127.0.0.1:8766/docs
-Dashboard: http://127.0.0.1:5173
+### Android / Termux
+Install Termux from a current trusted distribution, then:
+```bash
+pkg update && pkg upgrade -y
+pkg install -y git python nodejs-lts
+git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+cd MOJO-AGENT-
+chmod +x scripts/*.sh
+./scripts/install_termux.sh
+```
+Run `./scripts/run_termux_backend.sh` and in another Termux session `./scripts/run_termux_frontend.sh`. Open http://127.0.0.1:5173 on the phone.
 
-## Install separately
+## Service URLs
 
-- Backend: `scripts/install_backend.sh` or `scripts/install_backend.ps1`
-- Frontend: `scripts/install_frontend.sh` or `scripts/install_frontend.ps1`
-- Run backend: `scripts/run_backend.sh` / `scripts/run_backend.ps1`
-- Run frontend: `scripts/run_frontend.sh` / `scripts/run_frontend.ps1`
+- Dashboard: http://127.0.0.1:5173
+- Backend health: http://127.0.0.1:8766/api/v1/health
+- API docs: http://127.0.0.1:8766/docs
 
-Python 3.10+ and Node.js 20+ are recommended. Backend dependencies are isolated in `.venv`; frontend packages are installed in `frontend/node_modules`. No Docker, cloud account, API key or paid service is required.
+## Android native app
 
-## Android
+The APK is a client, not a bundled server. Install the current debug artifact from the [Android APK workflow](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/workflows/android-apk.yml). On the same Wi-Fi, run the PC backend with `--host 0.0.0.0 --port 8766`, allow TCP 8766 on the private firewall and tap **Find backend on Wi-Fi** in the app. For USB use `adb reverse tcp:8766 tcp:8766` and `http://127.0.0.1:8766/api/v1`. Emulator URL: `http://10.0.2.2:8766/api/v1`.
 
-Open `android/` in Android Studio (JDK 17, Android SDK 35) and build a debug APK, or run the **Android Debug APK** GitHub Actions workflow. Install `android/app/build/outputs/apk/debug/app-debug.apk`.
+## Complete installation instructions
 
-- Emulator: `http://10.0.2.2:8766/api/v1`.
-- USB: `adb reverse tcp:8766 tcp:8766`, then use `http://127.0.0.1:8766/api/v1`.
-- Same Wi-Fi: run backend on PC with `mojo-agent --host 0.0.0.0`, allow TCP 8766 on the private-network firewall, then tap **Find backend on Wi-Fi**. Android scans the connected Wi-Fi subnet (maximum 1022 host probes) for the MOJO health endpoint on port 8766 and lets you select a result.
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for Windows, Ubuntu/Debian, Fedora, Arch/Manjaro, macOS, Termux, Android APK installation/build, firewall setup, testing, backup and troubleshooting.
 
-**LAN security:** default backend binding is loopback-only. LAN binding is opt-in and should only be used on a trusted private network. Never expose port 8766 directly to the public internet: the API has no remote authentication layer. Android cleartext HTTP is enabled for local development; add TLS/authentication before any untrusted deployment.
+## Configuration and safety
 
-## Configuration
-
-- CLI: `mojo-agent --host 127.0.0.1 --port 8766`; environment: `MOJO_AGENT_HOST`, `MOJO_AGENT_PORT`.
-- Frontend: set `VITE_API_BASE=http://127.0.0.1:8766/api/v1`; Settings can save an override in browser-local storage.
-- CORS is restricted to local Vite development/preview origins.
-- Workflow scheduler is pull-driven; call `POST /api/v1/scheduler/tick` from an OS scheduler or manually.
+- Python 3.10+ and Node.js 20+ recommended. No Docker, API key, LLM or paid service required.
+- Backend defaults to loopback-only. LAN mode is opt-in and has no remote authentication/TLS; never expose port 8766 to the public internet.
 - Tools are allowlisted and approval-gated. Shell execution and protected-source self-modification are disabled.
-- Evolution changes bounded strategy parameters only; candidate validation and explicit approval are required.
+- Evolution changes bounded strategy parameters; candidate validation and explicit approval are required.
+- SQLite data is stored in `data/mojo_agent.sqlite3`; back up the `data/` directory.
 
 ## Testing
 
 ```bash
-# Backend
 .venv/bin/python -m pytest -q
-# Windows: .venv\Scripts\python.exe -m pytest -q
-# Frontend
 cd frontend && npm run build
-# Android (Gradle 8.9, JDK 17, SDK 35)
 gradle --no-daemon -p android :app:assembleDebug
 ```
+Windows backend test: `.venv\Scripts\python.exe -m pytest -q`.
 
-## Supported installation targets
+## Platform boundaries
 
-| Platform | Backend | Frontend | Native client |
-|---|---|---|---|
-| Windows 10/11 | Python venv + PowerShell | Node/Vite | Browser; Android client over LAN |
-| Linux | Python venv + shell | Node/Vite | Browser; Android client over LAN |
-| macOS | Python venv + shell | Node/Vite | Browser; Android client over LAN |
-| Android | Connects to an installed/running backend | Browser dashboard | Kotlin/Jetpack Compose app |
-
-Mojo compiler integration is experimental and platform-dependent; Python remains the tested reference runtime. The Android app is a client and does not bundle the Python server.
-
-See `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, and `docs/ROADMAP.md`.
+Python is the supported reference backend. React/Vite is the browser dashboard. Kotlin/Jetpack Compose is the Android client. Android can also host the backend via Termux. There is no native iOS client, Windows executable installer, or production-hardened remote server in this release. Mojo compiler integration remains experimental.
