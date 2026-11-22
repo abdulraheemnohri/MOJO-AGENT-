@@ -1,0 +1,44 @@
+gap:18px;margin-top:20px}.principles div{display:grid;gap:7px}.principles svg{color:#61dcb9}.principles b{font-size:12px}.principles small{font-size:11px;color:#8294ab}.placeholder{max-width:720px}@media(max-width:1000px){.sidebar{width:210px}.metrics{grid-template-columns:repeat(2,1fr)}}@media(max-width:720px){.sidebar{width:62px;padding:18px 8px}.brand{padding:0 0 28px}.brand>div:last-child,.workspace,.sidebar nav button{font-size:0;gap:0;justify-content:center}.sidebar nav button svg{width:19px;height:19px}.sidebar nav button{padding:13px 4px}.side-foot{display:none}.content{padding:22px 15px}.grid{grid-template-columns:1fr}.metrics{gap:8px}.metric{padding:13px}.metric strong{font-size:17px}header{padding:0 15px}.welcome h1{font-size:25px}.hero-mark{display:none}.principles{grid-template-columns:1fr}.brand .mark{width:42px;flex-shrink:0}}
+
+.notice{margin:0 0 16px;padding:11px 14px;border:1px solid #29465a;background:#102235;border-radius:9px;color:#8fe2c7;font-size:12px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.upload{position:relative;overflow:hidden;cursor:pointer}.upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* Apply the persisted theme to the dashboard shell and primary surfaces. */
+.shell.theme-light{background:#f3f6fa;color:#172437}
+.shell.theme-light main{background:#f3f6fa}
+.shell.theme-light header{background:rgba(255,255,255,.92);color:#26364b;border-color:#dce4ee}
+.shell.theme-light .content{color:#172437}
+.shell.theme-light .panel,.shell.theme-light .metric,.shell.theme-light .record{background:#fff;border-color:#dce4ee;color:#172437}
+.shell.theme-light input,.shell.theme-light textarea,.shell.theme-light select{background:#f8fafc;color:#172437;border-color:#cbd5e1}
+.shell.theme-light .welcome p,.shell.theme-light .record small{color:#64748b}
+
+
+/* Adaptive workspace: compact navigation becomes a horizontally scrollable top rail. */
+@media(max-width:720px){
+ .shell{display:flex;flex-direction:column;min-height:100vh}
+ .sidebar{position:sticky;top:0;z-index:30;width:100%;height:auto;max-height:none;padding:10px 12px;background:#101a2a;border-right:0;border-bottom:1px solid #27364b}
+ .brand{padding:0 0 8px;display:flex;align-items:center;gap:10px}
+ .brand>div:last-child{display:block;font-size:12px}
+ .workspace,.side-foot{display:none}
+ .sidebar nav{display:flex;gap:5px;overflow-x:auto;overscroll-behavior-x:contain;padding:4px 0 7px;scrollbar-width:thin}
+ .sidebar nav button{display:flex;flex:0 0 auto;gap:7px;justify-content:flex-start;align-items:center;font-size:11px;padding:9px 11px;white-space:nowrap;border-radius:9px}
+ .sidebar nav button svg{width:15px;height:15px}
+ main{width:100%;min-width:0}
+ .content{padding:18px 13px}
+ .welcome{gap:10px}
+ .welcome h1{font-size:clamp(22px,6vw,30px)}
+ .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .grid{grid-template-columns:minmax(0,1fr)}
+ .panel{min-width:0;overflow-wrap:anywhere}
+ .record .actions,.actions{align-items:stretch}
+}
+@media(max-width:420px){
+ .metrics{grid-template-columns:1fr 1fr}
+ .metric{min-width:0;padding:11px}
+ .metric strong{font-size:16px}
+ .panel{padding:15px}
+ .sidebar{padding-inline:8px}
+}
+@media(min-width:1200px){
+ .content{max-width:1500px;margin-inline:auto}
+ .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
