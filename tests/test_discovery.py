@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from mojo_agent.api import app
+from mojo_agent.api import app, _discover_ipv4_addresses
 
 def test_discovery_endpoint_reports_service_contract():
     response = TestClient(app).get("/api/v1/discovery")
@@ -9,6 +9,13 @@ def test_discovery_endpoint_reports_service_contract():
     assert payload["port"] == 8766
     assert payload["api_prefix"] == "/api/v1"
     assert payload["health_path"] == "/api/v1/health"
+    assert isinstance(payload["addresses"], list)
+    assert all(not address.startswith("127.") for address in payload["addresses"])
+
+def test_discovery_helper_returns_unique_non_loopback_addresses():
+    addresses = _discover_ipv4_addresses()
+    assert len(addresses) == len(set(addresses))
+    assert all(isinstance(address, str) and address for address in addresses)
 
 def test_frontend_development_origin_cors_preflight():
     response = TestClient(app).options(

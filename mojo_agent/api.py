@@ -39,15 +39,27 @@ async def collect_safe_analytics(request, call_next):
  return response
 @app.get('/api/v1/health')
 def health():return {'status':'ok','name':'MOJO AGENT','version':'0.9.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
-@app.get('/api/v1/discovery')
-def discovery():
+def _discover_ipv4_addresses():
  addresses=[]
  try:
   for item in socket.getaddrinfo(socket.gethostname(),None,socket.AF_INET):
    address=item[4][0]
-   if not address.startswith('127.') and address not in addresses:addresses.append(address)
+   if not address.startswith('127.') and not address.startswith('169.254.') and address not in addresses:addresses.append(address)
  except OSError:pass
- return {'service':'MOJO AGENT','port':8766,'api_prefix':'/api/v1','addresses':addresses,'health_path':'/api/v1/health','lan_access_requires_explicit_host_binding':True}
+ # A UDP connect asks the OS which interface it would route through; no packet is sent.
+ probe=None
+ try:
+  probe=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+  probe.connect(("192.0.2.1",80))
+  address=probe.getsockname()[0]
+  if address and not address.startswith('127.') and not address.startswith('169.254.') and address not in addresses:addresses.insert(0,address)
+ except OSError:pass
+ finally:
+  if probe is not None:probe.close()
+ return addresses
+@app.get('/api/v1/discovery')
+def discovery():
+ return {'service':'MOJO AGENT','port':8766,'api_prefix':'/api/v1','addresses':_discover_ipv4_addresses(),'health_path':'/api/v1/health','lan_access_requires_explicit_host_binding':True}
 @app.post('/api/v1/plan')
 def plan(req:Goal):
  try:
@@ -201,7 +213,7 @@ def update_workflow(workflow_id:str,req:WorkflowUpdate):
 @app.delete('/api/v1/workflows/{workflow_id}')
 def delete_workflow(workflow_id:str):
  if not workflows.delete(workflow_id):raise HTTPException(404,'Workflow not found')
- analytics.record('workflow_deleted');return {'deleted':True,'id':workflow_id}
+ return {'deleted':True,'id':workflow_id}
 class MemoryImport(BaseModel):
  format:str='mojo-memory-v1';items:list[dict]=Field(min_length=0,max_length=5000)
 @app.post('/api/v1/memory/import')
