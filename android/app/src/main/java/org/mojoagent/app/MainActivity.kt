@@ -184,10 +184,11 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
     } }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
      OutlinedButton(onClick = { request("/settings/validate", "POST", JSONObject().put("theme", theme).put("tool_approval_required", true).toString()) }, enabled = !busy) { Text("Validate settings") }
-     OutlinedButton(onClick = { request("/backup/export") }, enabled = !busy) { Text("Export database backup") }
+     OutlinedButton(onClick = { request("/backup/export") }, enabled = !busy) { Text("Export backup (local / USB)") }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { request("/health") }, enabled = !busy) { Text("Health check") }; OutlinedButton(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Diagnostics") } }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { request("/discovery") }, enabled = !busy) { Text("Server discovery") }; OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load settings") } }
+    Text("Database backup is limited to loopback connections. For Android, use USB port forwarding (adb reverse) to reach the local backend securely.", style = MaterialTheme.typography.bodySmall)
     Text("Connection address", style = MaterialTheme.typography.titleMedium)
     OutlinedTextField(base, { base = it }, label = { Text("API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
     Button(onClick = { context.getSharedPreferences("mojo", Context.MODE_PRIVATE).edit().putString("api_base", base.trimEnd('/')).apply(); request("/health") }, enabled = !busy && base.startsWith("http")) { Text("Save and test connection") }

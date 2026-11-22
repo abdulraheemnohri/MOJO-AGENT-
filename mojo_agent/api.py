@@ -1,4 +1,4 @@
-from fastapi import FastAPI,HTTPException,Response
+from fastapi import FastAPI,HTTPException,Response,Request
 from fastapi.middleware.cors import CORSMiddleware
 import socket
 from pydantic import BaseModel,Field
@@ -12,7 +12,7 @@ from .workflows import WorkflowStore
 from .knowledge import KnowledgeGraph
 from .analytics import Analytics
 from .settings import SettingsStore
-import math,uuid,time,platform,os,sqlite3,threading,hashlib
+import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
 memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={};RUNTIME_STARTED_AT=time.time()
@@ -52,7 +52,12 @@ def runtime_status():
  schedules=workflows.list_schedules()
  return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':False,'execution_mode':'manual tick endpoint'},'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
 @app.get('/api/v1/backup/export')
-def export_database_backup():
+def export_database_backup(request:Request):
+ try:
+  peer=ipaddress.ip_address(request.client.host if request.client else '')
+ except ValueError:
+  raise HTTPException(403,'Database backup is available only to loopback clients')
+ if not peer.is_loopback: raise HTTPException(403,'Database backup is restricted to loopback clients; use the local dashboard or USB port forwarding')
  db_path=str(memory.path)
  if not os.path.exists(db_path): raise HTTPException(404,'Database file does not exist yet')
  try:

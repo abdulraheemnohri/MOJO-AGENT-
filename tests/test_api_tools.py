@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from mojo_agent.api import app
 from mojo_agent.tools import calculator
 from mojo_agent.security import PermissionDenied
-client=TestClient(app)
+client=TestClient(app,client=("127.0.0.1",50000))
 def test_health_plan():
  assert client.get('/api/v1/health').json()['llm']=='disabled';r=client.post('/api/v1/plan',json={'goal':'inspect; test'});assert r.status_code==200 and len(r.json()['tasks'])==2
 def test_calculator_gate():
@@ -27,3 +27,8 @@ def test_settings_validation_does_not_mutate():
  assert client.get('/api/v1/settings').json()==before
  assert client.post('/api/v1/settings/validate',json={'tool_approval_required':False}).status_code==400
  assert client.post('/api/v1/settings/validate',json={'api_port':9999}).status_code==400
+
+
+def test_database_backup_rejects_remote_clients():
+ remote=TestClient(app,client=("192.168.1.50",50000))
+ assert remote.get('/api/v1/backup/export').status_code==403
