@@ -152,6 +152,8 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var extensionPreviewed by remember { mutableStateOf(false) }
  var manifestHash by remember { mutableStateOf("") }
  var runtimeEnabled by remember { mutableStateOf(false) }
+ var modelBackend by remember { mutableStateOf("cpu") }
+ var modelTimeout by remember { mutableStateOf("120") }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
@@ -160,7 +162,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  val bottomTabs = listOf("Home", "Planner", "Workflows", "Settings")
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
-  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { val prefs = JSONObject(it); theme = prefs.optString("theme", theme); agentMode = prefs.optString("runtime_mode", agentMode); modelPath = prefs.optString("litertlm_model", modelPath); runtimeEnabled = prefs.optBoolean("litertlm_enabled", false) } catch (_: Exception) { } }; if (path == "/extensions/github/preview") { extensionPreviewed = !it.startsWith("HTTP"); try { manifestHash = JSONObject(it).optString("manifest_sha256", "") } catch (_: Exception) { manifestHash = "" } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
+  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { val prefs = JSONObject(it); theme = prefs.optString("theme", theme); agentMode = prefs.optString("runtime_mode", agentMode); modelPath = prefs.optString("litertlm_model", modelPath); runtimeEnabled = prefs.optBoolean("litertlm_enabled", false); modelBackend = prefs.optString("litertlm_backend", modelBackend); modelTimeout = prefs.optInt("litertlm_timeout_seconds", 120).toString() } catch (_: Exception) { } }; if (path == "/extensions/github/preview") { extensionPreviewed = !it.startsWith("HTTP"); try { manifestHash = JSONObject(it).optString("manifest_sha256", "") } catch (_: Exception) { manifestHash = "" } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
  }
  val darkMode = !(theme == "light" || (theme == "system" && !isSystemInDarkTheme()))
  val palette = if (darkMode) darkColorScheme(
@@ -323,15 +325,16 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
      listOf("algorithms", "hybrid", "litertlm").forEach { mode -> FilterChip(selected = agentMode == mode, onClick = { agentMode = mode }, label = { Text(mode) }) }
     }
-    OutlinedTextField(modelPath, { modelPath = it }, label = { Text("Local .litertlm path or Hugging Face owner/model") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(modelPath, { modelPath = it }, label = { Text("Backend-host .litertlm path or Hugging Face owner/model") }, modifier = Modifier.fillMaxWidth())
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve local inference", Modifier.weight(1f)); Switch(checked = modelApproval, onCheckedChange = { modelApproval = it }) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-     Button(onClick = { request("/settings", "PATCH", JSONObject().put("runtime_mode", agentMode).put("litertlm_enabled", runtimeEnabled).put("litertlm_model", modelPath).put("litertlm_backend", "cpu").put("litertlm_timeout_seconds", 120).toString()) }, enabled = !busy) { Text("Save runtime config") }
+     Button(onClick = { request("/settings", "PATCH", JSONObject().put("runtime_mode", agentMode).put("litertlm_enabled", runtimeEnabled).put("litertlm_model", modelPath).put("litertlm_backend", modelBackend).put("litertlm_timeout_seconds", modelTimeout.toIntOrNull() ?: 120).toString()) }, enabled = !busy) { Text("Save runtime config") }
      OutlinedButton(onClick = { request("/agent/runtime") }, enabled = !busy) { Text("Runtime status") }
     }
     Button(onClick = { request("/agent/run", "POST", JSONObject().put("goal", goal).put("mode", agentMode).put("model", modelPath).put("backend", "cpu").put("approved", modelApproval).toString()) }, enabled = !busy && goal.isNotBlank() && (agentMode == "algorithms" || (runtimeEnabled && modelPath.isNotBlank() && modelApproval)), modifier = Modifier.fillMaxWidth()) { Text("Run agent") }
     Text("Hybrid mode uses the deterministic plan as authority. Model output is advisory and cannot execute tools. Model inference requires explicit approval.", style = MaterialTheme.typography.bodySmall)
     OutlinedButton(onClick = { request("/litertlm/status") }, enabled = !busy) { Text("LiteRT-LM runtime status") }
+    OutlinedButton(onClick = { request("/litertlm/benchmark", "POST", JSONObject().put("goal", "benchmark").put("model", modelPath).put("approved", modelApproval).toString()) }, enabled = !busy && runtimeEnabled && modelPath.isNotBlank() && modelApproval && (modelTimeout.toIntOrNull() ?: 0) in 10..180) { Text("Benchmark model") }
    }
    "Extensions Hub" -> {
     Text("GitHub skills and tools", style = MaterialTheme.typography.titleLarge)
