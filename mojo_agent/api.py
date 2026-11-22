@@ -10,7 +10,7 @@ from .knowledge import KnowledgeGraph
 from .analytics import Analytics
 from .settings import SettingsStore
 import math,uuid
-app=FastAPI(title='MOJO AGENT API',version='0.3.0',description='Local algorithmic agent runtime; no LLM required.')
+app=FastAPI(title='MOJO AGENT API',version='0.4.0',description='Local algorithmic agent runtime; no LLM required.')
 memory=MemoryStore();evolution=EvolutionEngine();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={}
 class Goal(BaseModel):goal:str=Field(min_length=1,max_length=2000)
 class MemoryInput(BaseModel):content:str=Field(min_length=1,max_length=10000);kind:str='episodic';importance:float=Field(default=.5,ge=0,le=1)
@@ -22,7 +22,7 @@ class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
 class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None
 class ApprovalInput(BaseModel):approved:bool
 @app.get('/api/v1/health')
-def health():return {'status':'ok','name':'MOJO AGENT','version':'0.3.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
+def health():return {'status':'ok','name':'MOJO AGENT','version':'0.4.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
 @app.post('/api/v1/plan')
 def plan(req:Goal):
  try:
@@ -169,3 +169,27 @@ def delete_workflow(workflow_id: str):
         raise HTTPException(404, 'Workflow not found')
     analytics.record('workflow_deleted')
     return {'deleted': True, 'id': workflow_id}
+
+class MemoryImport(BaseModel):
+    format: str = 'mojo-memory-v1'
+    items: list[dict] = Field(min_length=0, max_length=5000)
+
+@app.post('/api/v1/memory/import')
+def import_memory(req: MemoryImport):
+    if req.format != 'mojo-memory-v1':
+        raise HTTPException(400, 'Unsupported memory export format')
+    added = 0
+    try:
+        for item in req.items:
+            if not isinstance(item, dict):
+                raise ValueError('Each memory item must be an object')
+            memory.add(item.get('content'), item.get('kind', 'episodic'), item.get('importance', .5))
+            added += 1
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, f'Import stopped after {added} records: {exc}')
+    analytics.record('memory_imported', {'count': added})
+    return {'imported': added}
+
+@app.get('/api/v1/memory/export')
+def export_memory():
+    return {'format': 'mojo-memory-v1', 'items': memory.export_all()}
