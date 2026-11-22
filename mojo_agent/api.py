@@ -106,3 +106,66 @@ def get_settings():return settings.get()
 def patch_settings(req:SettingsInput):
  try:return settings.update({k:v for k,v in req.model_dump().items() if v is not None})
  except ValueError as e:raise HTTPException(400,str(e))
+
+# Resource lifecycle endpoints: explicit IDs, bounded payloads, and cascade-safe deletion.
+class MemoryUpdate(BaseModel):
+    content: str | None = Field(default=None, max_length=10000)
+    kind: str | None = None
+    importance: float | None = Field(default=None, ge=0, le=1)
+
+@app.patch('/api/v1/memory/{memory_id}')
+def update_memory(memory_id: int, req: MemoryUpdate):
+    try:
+        item = memory.update(memory_id, **req.model_dump(exclude_unset=True))
+        if item is None:
+            raise HTTPException(404, 'Memory not found')
+        analytics.record('memory_updated')
+        return item
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+@app.delete('/api/v1/memory/{memory_id}')
+def delete_memory(memory_id: int):
+    if not memory.delete(memory_id):
+        raise HTTPException(404, 'Memory not found')
+    analytics.record('memory_deleted')
+    return {'deleted': True, 'id': memory_id}
+
+@app.get('/api/v1/memory/export')
+def export_memory():
+    return {'format': 'mojo-memory-v1', 'items': memory.export_all()}
+
+@app.delete('/api/v1/knowledge/nodes/{node_id}')
+def delete_knowledge_node(node_id: str):
+    if not knowledge.delete_node(node_id):
+        raise HTTPException(404, 'Node not found')
+    analytics.record('knowledge_node_deleted')
+    return {'deleted': True, 'id': node_id}
+
+@app.delete('/api/v1/knowledge/edges/{edge_id}')
+def delete_knowledge_edge(edge_id: str):
+    if not knowledge.delete_edge(edge_id):
+        raise HTTPException(404, 'Edge not found')
+    analytics.record('knowledge_edge_deleted')
+    return {'deleted': True, 'id': edge_id}
+
+class WorkflowUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    steps: list[dict] = Field(min_length=1, max_length=50)
+
+@app.patch('/api/v1/workflows/{workflow_id}')
+def update_workflow(workflow_id: str, req: WorkflowUpdate):
+    try:
+        if not workflows.update(workflow_id, req.name, req.steps):
+            raise HTTPException(404, 'Workflow not found')
+        analytics.record('workflow_updated')
+        return workflows.get(workflow_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+@app.delete('/api/v1/workflows/{workflow_id}')
+def delete_workflow(workflow_id: str):
+    if not workflows.delete(workflow_id):
+        raise HTTPException(404, 'Workflow not found')
+    analytics.record('workflow_deleted')
+    return {'deleted': True, 'id': workflow_id}
