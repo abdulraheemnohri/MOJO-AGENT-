@@ -1,7 +1,8 @@
-"""SQLite persistence for evolution experiments and approved champion strategy."""
+"""SQLite persistence for evolution experiments, generation, and approved champion."""
 import json, sqlite3
 from pathlib import Path
 from .evolution import Candidate, Strategy
+
 class EvolutionStore:
  def __init__(self,path="data/mojo_agent.sqlite3"):
   self.path=path;Path(path).parent.mkdir(parents=True,exist_ok=True)
@@ -22,3 +23,8 @@ class EvolutionStore:
  def get_champion(self):
   with self.db() as c:r=c.execute("SELECT value FROM evolution_state WHERE key='champion'").fetchone()
   return Strategy(**json.loads(r[0])) if r else Strategy()
+ def set_generation(self,generation):
+  with self.db() as c:c.execute("INSERT INTO evolution_state(key,value) VALUES('generation',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(max(0,int(generation))),))
+ def get_generation(self):
+  with self.db() as c:r=c.execute("SELECT value FROM evolution_state WHERE key='generation'").fetchone()
+  return max(0,int(r[0])) if r else 0
