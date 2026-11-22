@@ -311,6 +311,7 @@ def run_agent(req:AgentRunInput):
  if mode in {'hybrid','litertlm'} and not prefs['litertlm_enabled']:raise HTTPException(400,'Optional LiteRT-LM runtime is disabled in settings')
  model=req.model if req.model is not None else prefs['litertlm_model'];backend=req.backend if req.backend is not None else prefs['litertlm_backend']
  try:
+  agent_runtime.model_runtime.timeout_seconds=prefs['litertlm_timeout_seconds']
   result=agent_runtime.run(req.goal,mode,model,backend,req.approved);analytics.record('agent_run',{'mode':mode});return result
  except PermissionError as exc:raise HTTPException(403,str(exc))
  except (ValueError,RuntimeError) as exc:raise HTTPException(400,str(exc))
@@ -324,7 +325,9 @@ def litertlm_run(req:AgentRunInput):
  prefs=settings.get()
  if not prefs['litertlm_enabled']:raise HTTPException(400,'LiteRT-LM is disabled in settings')
  if not req.model and not prefs['litertlm_model']:raise HTTPException(400,'Configure a local model or Hugging Face model id first')
- try:\n  agent_runtime.model_runtime.timeout_seconds=prefs['litertlm_timeout_seconds']\n  return agent_runtime.model_runtime.run(req.model or prefs['litertlm_model'],req.goal,backend=req.backend or prefs['litertlm_backend'],approved=req.approved)
+ try:
+  agent_runtime.model_runtime.timeout_seconds=prefs['litertlm_timeout_seconds']
+  return agent_runtime.model_runtime.run(req.model or prefs['litertlm_model'],req.goal,backend=req.backend or prefs['litertlm_backend'],approved=req.approved)
  except PermissionError as exc:raise HTTPException(403,str(exc))
  except (ValueError,LiteRTLMError) as exc:raise HTTPException(400,str(exc))
 
@@ -355,4 +358,10 @@ def execute_installed_tool(name:str,req:InstalledToolInput):
  except PermissionError as exc:raise HTTPException(403,str(exc))
  except KeyError as exc:raise HTTPException(404,str(exc))
  except ExtensionError as exc:raise HTTPException(400,str(exc))
-\n@app.post('/api/v1/skills/{name}/run')\ndef run_installed_skill(name:str,req:Goal):\n try:manifest=extensions.get_manifest('skill',name)\n except KeyError:raise HTTPException(404,'Skill not installed')\n tasks=decompose_goal(req.goal);order=topological_order({task['id']:task['depends_on'] for task in tasks})\n return {'skill':name,'instructions':manifest['instructions'],'allowed_tools':manifest.get('tools',[]),'goal':req.goal,'algorithm_plan':{'tasks':tasks,'execution_order':order},'execution':'instructions and plan only; tools are not auto-executed'}\n
+
+@app.post('/api/v1/skills/{name}/run')
+def run_installed_skill(name:str,req:Goal):
+ try:manifest=extensions.get_manifest('skill',name)
+ except KeyError:raise HTTPException(404,'Skill not installed')
+ tasks=decompose_goal(req.goal);order=topological_order({task['id']:task['depends_on'] for task in tasks})
+ return {'skill':name,'instructions':manifest['instructions'],'allowed_tools':manifest.get('tools',[]),'goal':req.goal,'algorithm_plan':{'tasks':tasks,'execution_order':order},'execution':'instructions and plan only; tools are not auto-executed'}
