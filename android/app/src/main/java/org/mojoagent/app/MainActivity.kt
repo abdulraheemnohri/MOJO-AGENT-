@@ -142,7 +142,15 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var output by remember { mutableStateOf("Connect to your local MOJO AGENT service.") }
  var runtimeSummary by remember { mutableStateOf("Runtime metrics not loaded yet.") }
  var compactMode by remember { mutableStateOf(false) }
- var showAdvanced by remember { mutableStateOf(false) }\n var agentMode by remember { mutableStateOf("algorithms") }\n var modelPath by remember { mutableStateOf("") }\n var modelApproval by remember { mutableStateOf(false) }\n var githubRepo by remember { mutableStateOf("") }\n var githubRef by remember { mutableStateOf("main") }\n var manifestPath by remember { mutableStateOf("mojo-extension.json") }\n var extensionPreviewed by remember { mutableStateOf(false) }\n var runtimeEnabled by remember { mutableStateOf(false) }
+ var showAdvanced by remember { mutableStateOf(false) }
+ var agentMode by remember { mutableStateOf("algorithms") }
+ var modelPath by remember { mutableStateOf("") }
+ var modelApproval by remember { mutableStateOf(false) }
+ var githubRepo by remember { mutableStateOf("") }
+ var githubRef by remember { mutableStateOf("main") }
+ var manifestPath by remember { mutableStateOf("mojo-extension.json") }
+ var extensionPreviewed by remember { mutableStateOf(false) }
+ var runtimeEnabled by remember { mutableStateOf(false) }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
@@ -309,7 +317,8 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    }
    "Runtime & Models" -> {
     Text("Agent runtime", style = MaterialTheme.typography.titleLarge)
-    Text("Algorithms are always available. Local LiteRT-LM is optional and disabled until configured.")\n    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Enable LiteRT-LM", Modifier.weight(1f)); Switch(checked = runtimeEnabled, onCheckedChange = { runtimeEnabled = it }) }
+    Text("Algorithms are always available. Local LiteRT-LM is optional and disabled until configured.")
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Enable LiteRT-LM", Modifier.weight(1f)); Switch(checked = runtimeEnabled, onCheckedChange = { runtimeEnabled = it }) }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
      listOf("algorithms", "hybrid", "litertlm").forEach { mode -> FilterChip(selected = agentMode == mode, onClick = { agentMode = mode }, label = { Text(mode) }) }
     }
