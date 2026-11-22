@@ -104,7 +104,9 @@ def add_edge(req:EdgeInput):
  try:return knowledge.add_edge(req.source,req.target,req.relation,req.weight)
  except ValueError as e:raise HTTPException(400,str(e))
 @app.get('/api/v1/analytics')
-def analytics_summary():return analytics.summary()
+def analytics_summary(limit:int=20,event:str|None=None):
+ try:return analytics.summary(limit,event)
+ except ValueError as e:raise HTTPException(400,str(e))
 @app.get('/api/v1/security/status')
 def security_status():return {'mode':'local-only','tool_allowlist':tools.list_tools(),'approval_required':settings.get()['tool_approval_required'],'shell_execution':False,'source_self_modification':False,'remote_access':'not configured'}
 @app.get('/api/v1/settings')

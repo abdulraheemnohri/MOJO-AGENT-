@@ -20,6 +20,6 @@ Mojo compiler support is platform-dependent. The Mojo core is intended for suppo
 ## Architecture
 `mojo_core/` Mojo primitives; `mojo_agent/` functional Python reference runtime/API; `frontend/` responsive dashboard; `android/` integration plan; `tests/` automated tests; `docs/` architecture and security.
 
-Evolution modifies bounded strategy parameters only. It cannot rewrite protected control code. Candidate activation requires tests and explicit approval.
+Runtime analytics events are persisted in SQLite, queryable by event name, and retained with a bounded rolling limit.\n\nEvolution modifies bounded strategy parameters only. It cannot rewrite protected control code. Candidate activation requires tests and explicit approval.
 
 Apache-2.0. See LICENSE.
