@@ -1,12 +1,13 @@
 from fastapi.testclient import TestClient
 from mojo_agent import api
+from mojo_agent.evolution import Candidate, Strategy, EvolutionEngine
 
 def test_approved_candidate_can_be_restored_from_store(monkeypatch,tmp_path):
  store=api.EvolutionStore(str(tmp_path/"evolution.sqlite3"))
- candidate=api.Candidate(api.Strategy(learning_rate=.3),.9,1,True,False)
+ candidate=Candidate(Strategy(learning_rate=.3),.9,1,True,False)
  store.save_candidate("persisted-candidate",candidate)
  monkeypatch.setattr(api,"evolution_store",store)
- monkeypatch.setattr(api,"evolution",api.EvolutionEngine())
+ monkeypatch.setattr(api,"evolution",EvolutionEngine())
  client=TestClient(api.app)
  response=client.post("/api/v1/evolution/candidates/persisted-candidate/approve",json={"approved":True})
  assert response.status_code==200
