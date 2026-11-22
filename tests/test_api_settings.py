@@ -13,4 +13,4 @@ def test_tool_requires_approval():
  r=client.post('/api/v1/tools/execute',json={'name':'calculator','arguments':{'expression':'2+2'}});assert r.status_code==403
  r=client.post('/api/v1/tools/execute',json={'name':'calculator','arguments':{'expression':'2+2'},'approved':True});assert r.status_code==200 and r.json()['result']==4
 def test_plan_rejects_blank_goal():
- assert client.post('/api/v1/plan',json={'goal':'  '}).status_code==400
+ assert client.post('/api/v1/plan',json={'goal':'  '}).status_code==422
