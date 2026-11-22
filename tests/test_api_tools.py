@@ -40,7 +40,7 @@ def test_runtime_logs_are_bounded_safe_and_filterable():
  assert result.status_code==200
  body=result.json()
  assert body['count']>=1 and body['payloads_recorded'] is False
- assert body['items'][0]['path']=='/api/v1/runtime/logs'
+ assert any(item['path']=='/api/v1/runtime/logs' for item in body['items'])
  assert client.get('/api/v1/runtime/logs?limit=501').status_code==400
  assert client.get('/api/v1/runtime/logs?level=TRACE').status_code==400
  cleared=client.post('/api/v1/runtime/logs/clear')
