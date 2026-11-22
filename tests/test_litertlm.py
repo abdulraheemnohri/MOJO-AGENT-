@@ -27,8 +27,8 @@ def test_run_is_shell_free_and_timeout_bounded(monkeypatch,tmp_path):
     assert "--prompt=hello" in seen["command"]
 
 def test_rejects_invalid_prompt_and_backend():
-    with pytest.raises(ValueError): LiteRTLM().run("org/model"," ")
-    with pytest.raises(ValueError): LiteRTLM().run("org/model","hello",backend="remote")
+    with pytest.raises(ValueError): LiteRTLM().run("org/model"," ",approved=True)
+    with pytest.raises(ValueError): LiteRTLM().run("org/model","hello",backend="remote",approved=True)
 
 def test_cli_missing(monkeypatch):
     monkeypatch.setattr("mojo_agent.litertlm.shutil.which",lambda _:None)
