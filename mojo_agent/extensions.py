@@ -76,11 +76,11 @@ class GitHubExtensionRegistry:
             tools = data.get("tools", [])
             if not isinstance(instructions, str) or not instructions.strip() or len(instructions) > 6000:
                 raise ExtensionError("skill instructions must contain 1-6000 characters")
-            if not isinstance(tools, list) or len(tools) > 12 or any(x not in _ALLOWED_OPERATIONS for x in tools):
+            if not isinstance(tools, list) or len(tools) > 12 or any(not isinstance(x, str) or x not in _ALLOWED_OPERATIONS for x in tools):
                 raise ExtensionError("skill references unsupported tool operations")
         else:
             operation = data.get("operation")
-            if operation not in _ALLOWED_OPERATIONS: raise ExtensionError("tool operation is not in the built-in safe operation set")
+            if not isinstance(operation, str) or operation not in _ALLOWED_OPERATIONS: raise ExtensionError("tool operation is not in the built-in safe operation set")
             if not isinstance(data.get("input_schema", {}), dict): raise ExtensionError("input_schema must be an object")
         return {"kind":kind,"name":name,"description":description,"version":version,
                 "repository":repo,"ref":ref,"manifest_path":path,"manifest_sha256":digest,
