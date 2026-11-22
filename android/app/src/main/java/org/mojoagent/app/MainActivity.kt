@@ -1,9 +1,17 @@
 package org.mojoagent.app
 
 import android.os.Bundle
+import android.content.Context
+import android.net.wifi.WifiManager
+import java.net.InetAddress
+import java.net.NetworkInterface
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -22,8 +30,57 @@ class MainActivity : ComponentActivity() {
  private val client = OkHttpClient()
  override fun onCreate(savedInstanceState: Bundle?) {
   super.onCreate(savedInstanceState)
-  setContent { MaterialTheme { MojoApp(::apiCall) } }
+  setContent { MaterialTheme { MojoApp(::apiCall, ::scanLocalServers) } }
  }
+ private fun scanLocalServers(done: (List<String>) -> Unit) {
+  Thread {
+   val found = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+   try {
+    val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    val dhcp = wifi.dhcpInfo
+    var rawIp = dhcp.ipAddress
+    if (rawIp == 0) {
+     val interfaces = NetworkInterface.getNetworkInterfaces()
+     while (interfaces.hasMoreElements() && rawIp == 0) {
+      val iface = interfaces.nextElement()
+      if (iface.name.startsWith("wlan") || iface.name.startsWith("eth")) {
+       val local = iface.interfaceAddresses.firstOrNull { it.address is java.net.Inet4Address }
+       if (local != null) {
+        val bytes = local.address.address
+        rawIp = ((bytes[3].toInt() and 255) shl 24) or ((bytes[2].toInt() and 255) shl 16) or ((bytes[1].toInt() and 255) shl 8) or (bytes[0].toInt() and 255)
+       }
+      }
+     }
+    }
+    val ip = rawIp.toLong() and 0xffffffffL
+    val mask = (if (dhcp.netmask != 0) dhcp.netmask else 0x00FFFFFF).toLong() and 0xffffffffL
+    if (ip == 0L) throw IllegalStateException("Connect to the same Wi-Fi network as the backend first.")
+    val network = ip and mask
+    val broadcast = network or (mask.inv() and 0xffffffffL)
+    val total = (broadcast - network - 1L).coerceIn(0L, 1022L)
+    val pool = Executors.newFixedThreadPool(24)
+    val latch = CountDownLatch(total.toInt())
+    for (offset in 1..total.toInt()) {
+     val host = (network + offset).toInt()
+     pool.execute {
+      try {
+       val address = InetAddress.getByAddress(byteArrayOf(host.toByte(), (host ushr 8).toByte(), (host ushr 16).toByte(), (host ushr 24).toByte())).hostAddress
+       if (address != null) {
+        val req = Request.Builder().url("http://$address:8766/api/v1/health").get().build()
+        client.newCall(req).execute().use { response ->
+         if (response.isSuccessful && response.body?.string()?.contains("MOJO AGENT") == true) found.add("http://$address:8766/api/v1")
+        }
+       }
+      } catch (_: Exception) { } finally { latch.countDown() }
+     }
+    }
+    latch.await(8, TimeUnit.SECONDS)
+    pool.shutdownNow()
+   } catch (_: Exception) { }
+   runOnUiThread { done(found.sorted()) }
+  }.start()
+ }
+
  private fun apiCall(base: String, path: String, method: String, payload: String?, done: (String) -> Unit) {
   val body = payload?.toRequestBody("application/json".toMediaType())
   val builder = Request.Builder().url(base.trimEnd('/') + path)
@@ -46,7 +103,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
+fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, discover: ((List<String>) -> Unit) -> Unit) {
  var base by remember { mutableStateOf("http://10.0.2.2:8766/api/v1") }
  var tab by remember { mutableStateOf("Home") }
  var goal by remember { mutableStateOf("Create a project plan") }
@@ -63,17 +120,24 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
  var scheduleWorkflowId by remember { mutableStateOf("") }
  var scheduleSeconds by remember { mutableStateOf("3600") }
  var scheduleId by remember { mutableStateOf("") }
+ var servers by remember { mutableStateOf(listOf<String>()) }
+ var scanning by remember { mutableStateOf(false) }
  var output by remember { mutableStateOf("Connect to your local MOJO AGENT service.") }
  var busy by remember { mutableStateOf(false) }
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
   call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { theme = JSONObject(it).optString("theme", theme) } catch (_: Exception) { } }; busy = false }
  }
- MaterialTheme(colorScheme = if (theme == "light") lightColorScheme() else darkColorScheme()) {
- Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+ MaterialTheme(colorScheme = if (theme == "light" || (theme == "system" && !isSystemInDarkTheme())) lightColorScheme() else darkColorScheme()) {
+ Column(Modifier.fillMaxSize().widthIn(max = 960.dp).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
   Text("MOJO AGENT", style = MaterialTheme.typography.headlineMedium)
   Text("Algorithmic intelligence · local-first · no LLM required")
-  OutlinedTextField(base, { base = it }, label = { Text("Local API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+  OutlinedTextField(base, { base = it }, label = { Text("Backend API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+   OutlinedButton(onClick = { scanning = true; discover { servers = it; scanning = false } }, enabled = !busy && !scanning) { Text(if (scanning) "Scanning LAN…" else "Find backend on Wi-Fi") }
+   OutlinedButton(onClick = { request("/discovery") }, enabled = !busy) { Text("Server info") }
+  }
+  servers.forEach { server -> OutlinedButton(onClick = { base = server; request("/health") }, modifier = Modifier.fillMaxWidth()) { Text("Use $server") } }
   Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
    listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Settings").forEach { item ->
     FilterChip(selected = tab == item, onClick = { tab = item }, label = { Text(item) })
@@ -83,7 +147,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
    "Home" -> {
     Text("Runtime", style = MaterialTheme.typography.titleLarge)
     Button(onClick = { request("/health") }, enabled = !busy) { Text("Check backend") }
-    Text("Use the emulator URL above, or on a physical phone connect over USB with adb reverse tcp:8766 tcp:8766.")
+    Text("Automatic discovery scans the connected Wi-Fi subnet for MOJO AGENT on port 8766. Start the backend with --host 0.0.0.0 on a trusted private LAN. For USB use adb reverse tcp:8766 tcp:8766 and 127.0.0.1.")
    }
    "Planner" -> {
     Text("Goal planner", style = MaterialTheme.typography.titleLarge)

@@ -1,4 +1,6 @@
 from fastapi import FastAPI,HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import socket
 from pydantic import BaseModel,Field
 from .algorithms import q_update
 from .planner import decompose_goal,topological_order
@@ -11,7 +13,8 @@ from .knowledge import KnowledgeGraph
 from .analytics import Analytics
 from .settings import SettingsStore
 import math,uuid,time,platform
-app=FastAPI(title='MOJO AGENT API',version='0.6.0',description='Local algorithmic agent runtime; no LLM required.')
+app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
+app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
 memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={}
 class Goal(BaseModel):goal:str=Field(min_length=1,max_length=2000)
 class MemoryInput(BaseModel):content:str=Field(min_length=1,max_length=10000);kind:str='episodic';importance:float=Field(default=.5,ge=0,le=1)
@@ -35,7 +38,16 @@ async def collect_safe_analytics(request, call_next):
   except Exception:pass
  return response
 @app.get('/api/v1/health')
-def health():return {'status':'ok','name':'MOJO AGENT','version':'0.6.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
+def health():return {'status':'ok','name':'MOJO AGENT','version':'0.9.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
+@app.get('/api/v1/discovery')
+def discovery():
+ addresses=[]
+ try:
+  for item in socket.getaddrinfo(socket.gethostname(),None,socket.AF_INET):
+   address=item[4][0]
+   if not address.startswith('127.') and address not in addresses:addresses.append(address)
+ except OSError:pass
+ return {'service':'MOJO AGENT','port':8766,'api_prefix':'/api/v1','addresses':addresses,'health_path':'/api/v1/health','lan_access_requires_explicit_host_binding':True}
 @app.post('/api/v1/plan')
 def plan(req:Goal):
  try:
