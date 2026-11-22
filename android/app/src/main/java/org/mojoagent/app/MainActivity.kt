@@ -107,14 +107,7 @@ class MainActivity : ComponentActivity() {
      } else {
       val text = it.body?.string() ?: ""
       runOnUiThread {
-       if (it.isSuccessful && path == "/runtime/status") {
-        try {
-         val parsed = JSONObject(text)
-         val db = parsed.optJSONObject("database")
-         runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown")
-        } catch (_: Exception) { }
-       }
-       done(if (it.isSuccessful) text else "HTTP " + it.code + ": " + text)
+done(if (it.isSuccessful) text else "HTTP " + it.code + ": " + text)
       }
      }
     }
@@ -154,7 +147,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Backend Control", "Settings")
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
-  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { theme = JSONObject(it).optString("theme", theme) } catch (_: Exception) { } }; busy = false }
+  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { theme = JSONObject(it).optString("theme", theme) } catch (_: Exception) { } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
  }
  MaterialTheme(colorScheme = if (theme == "light" || (theme == "system" && !isSystemInDarkTheme())) lightColorScheme() else darkColorScheme()) {
  ModalNavigationDrawer(drawerState = drawerState, drawerContent = { ModalDrawerSheet {
