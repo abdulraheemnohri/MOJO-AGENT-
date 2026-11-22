@@ -33,7 +33,7 @@ class ScheduleEnabledInput(BaseModel):enabled:bool
 class NodeInput(BaseModel):label:str=Field(min_length=1,max_length=300);kind:str='concept';properties:dict={}
 class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weight:float=Field(default=1,ge=0,le=100)
 class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
-class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None
+class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None;litertlm_enabled:bool|None=None;litertlm_backend:str|None=None;litertlm_timeout_seconds:int|None=Field(default=None,ge=10,le=180)
 class ApprovalInput(BaseModel):approved:bool
 class LiteRTLMRunInput(BaseModel):model:str=Field(min_length=1,max_length=512);prompt:str=Field(min_length=1,max_length=6000);backend:str='cpu';approved:bool=False
 class LiteRTLMBenchmarkInput(BaseModel):model:str=Field(min_length=1,max_length=512);approved:bool=False
