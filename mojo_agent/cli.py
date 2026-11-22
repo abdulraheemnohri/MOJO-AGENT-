@@ -14,10 +14,11 @@ def _litertlm(args):
 
 def main():
     parser=argparse.ArgumentParser(description="MOJO AGENT local runtime")
+    parser.add_argument("--host",default=os.getenv("MOJO_AGENT_HOST","127.0.0.1"),
+                        help="API bind address (default loopback; use 0.0.0.0 only on a trusted LAN)")
+    parser.add_argument("--port",type=int,default=int(os.getenv("MOJO_AGENT_PORT","8766")))
     sub=parser.add_subparsers(dest="command")
-    server=sub.add_parser("serve",help="Start the local API")
-    server.add_argument("--host",default=os.getenv("MOJO_AGENT_HOST","127.0.0.1"))
-    server.add_argument("--port",type=int,default=int(os.getenv("MOJO_AGENT_PORT","8766")))
+    sub.add_parser("serve",help="Start the local API (default action)")
     lm=sub.add_parser("litertlm",help="Optional LiteRT-LM CLI")
     lm.add_argument("action",choices=["status","run","benchmark"])
     lm.add_argument("--model",default="");lm.add_argument("--prompt",default="")
@@ -26,11 +27,9 @@ def main():
     lm.add_argument("--approved",action="store_true",help="Explicitly approve local inference/benchmark")
     args=parser.parse_args()
     if args.command=="litertlm":return _litertlm(args)
-    host=args.host if args.command=="serve" else os.getenv("MOJO_AGENT_HOST","127.0.0.1")
-    port=args.port if args.command=="serve" else int(os.getenv("MOJO_AGENT_PORT","8766"))
-    if not 1024<=port<=65535:parser.error("port must be between 1024 and 65535")
-    if host=="0.0.0.0":print("WARNING: LAN binding enabled; use only a trusted private network.")
-    uvicorn.run("mojo_agent.api:app",host=host,port=port,reload=False)
+    if not 1024<=args.port<=65535:parser.error("port must be between 1024 and 65535")
+    if args.host=="0.0.0.0":print("WARNING: LAN binding enabled; use only a trusted private network.")
+    uvicorn.run("mojo_agent.api:app",host=args.host,port=args.port,reload=False)
     return 0
 
 if __name__=="__main__":raise SystemExit(main())
