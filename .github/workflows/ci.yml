@@ -41,7 +41,11 @@ jobs:
           test -s scripts/install_frontend.ps1
           test -s scripts/install_all.sh
           test -s scripts/install_all.ps1
+          test -s scripts/install_termux.sh
+          test -s scripts/run_termux_backend.sh
+          test -s scripts/run_termux_frontend.sh
           test -s scripts/run_backend.sh
           test -s scripts/run_backend.ps1
           test -s scripts/run_frontend.sh
           test -s scripts/run_frontend.ps1
+          test -s docs/INSTALLATION.md
