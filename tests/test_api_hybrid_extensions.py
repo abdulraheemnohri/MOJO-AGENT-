@@ -14,7 +14,7 @@ def test_runtime_settings_validation():
     assert client.post("/api/v1/settings/validate",json={"runtime_mode":"algorithms"}).status_code==200
     assert client.post("/api/v1/settings/validate",json={"runtime_mode":"unknown"}).status_code==400
     assert client.post("/api/v1/settings/validate",json={"litertlm_backend":"remote"}).status_code==400
-    assert client.post("/api/v1/settings/validate",json={"litertlm_timeout_seconds":999}).status_code==400
+    assert client.post("/api/v1/settings/validate",json={"litertlm_timeout_seconds":999}).status_code==422
 
 def test_hybrid_mode_disabled_by_default():
     response=client.post("/api/v1/agent/run",json={"goal":"test","mode":"hybrid","model":"org/model","approved":True})
