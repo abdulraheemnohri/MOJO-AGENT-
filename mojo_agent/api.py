@@ -38,7 +38,7 @@ class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
 class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None;runtime_mode:str|None=None;litertlm_enabled:bool|None=None;litertlm_backend:str|None=None;litertlm_timeout_seconds:int|None=Field(default=None,ge=10,le=180);litertlm_model:str|None=None
 class ApprovalInput(BaseModel):approved:bool
 class AgentRunInput(BaseModel):goal:str=Field(min_length=1,max_length=2000);mode:str|None=None;model:str|None=None;backend:str|None=None;approved:bool=False
-class GitHubExtensionInput(BaseModel):repository:str=Field(min_length=3,max_length=205);ref:str='main';manifest_path:str='mojo-extension.json'
+class GitHubExtensionInput(BaseModel):repository:str=Field(min_length=3,max_length=205);ref:str='main';manifest_path:str='mojo-extension.json';expected_sha256:str|None=Field(default=None,min_length=64,max_length=64)
 class InstalledToolInput(BaseModel):arguments:dict={};approved:bool=False
 @app.middleware("http")
 async def collect_safe_analytics(request, call_next):
@@ -344,7 +344,7 @@ def preview_github_extension(req:GitHubExtensionInput):
 @app.post('/api/v1/extensions/github/install')
 def install_github_extension(req:GitHubExtensionInput):
  try:
-  item=extensions.install(req.repository,req.ref,req.manifest_path);analytics.record('github_extension_installed',{'kind':item['kind'],'name':item['name']});return item
+  item=extensions.install(req.repository,req.ref,req.manifest_path,req.expected_sha256);analytics.record('github_extension_installed',{'kind':item['kind'],'name':item['name']});return item
  except ExtensionError as exc:raise HTTPException(400,str(exc))
 
 @app.delete('/api/v1/extensions/{extension_id}')
