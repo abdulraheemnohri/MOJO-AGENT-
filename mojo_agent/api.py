@@ -78,7 +78,7 @@ def runtime_status():
   integrity=conn.execute('PRAGMA quick_check').fetchone()[0]
   table_names={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
   counts={}
-  for table in ('memories','workflows','workflow_runs','workflow_schedules','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates'):
+  for table in ('memories','workflows','workflow_runs','workflow_schedules','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates','installed_extensions'):
    if table in table_names: counts[table]=conn.execute('SELECT COUNT(*) FROM "'+table+'"').fetchone()[0]
  schedules=workflows.list_schedules()
  return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':False,'execution_mode':'manual tick endpoint'},'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
@@ -246,7 +246,7 @@ def analytics_summary(limit:int=20,event:str|None=None):
 @app.get('/api/v1/diagnostics')
 def diagnostics():
  graph_snapshot=knowledge.snapshot()
- return {'status':'ok','python':platform.python_version(),'platform':platform.platform(),'runtime':'python-reference','llm_enabled':False,'database':'sqlite','modules':{'memory_records':len(memory.search('',200)),'workflows':len(workflows.list()),'knowledge_nodes':len(graph_snapshot['nodes']),'knowledge_edges':len(graph_snapshot['edges']),'evolution_candidates':len(evolution_store.list_candidates(500))},'limits':{'memory_search':200,'workflow_steps':50,'analytics_retention':analytics.retention},'safety':{'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
+ return {'status':'ok','python':platform.python_version(),'platform':platform.platform(),'runtime':'python-reference','runtime_mode':settings.get()['runtime_mode'],'llm_enabled':False,'litertlm':agent_runtime.model_runtime.status(),'database':'sqlite','modules':{'memory_records':len(memory.search('',200)),'workflows':len(workflows.list()),'knowledge_nodes':len(graph_snapshot['nodes']),'knowledge_edges':len(graph_snapshot['edges']),'evolution_candidates':len(evolution_store.list_candidates(500)),'installed_extensions':len(extensions.list())},'limits':{'memory_search':200,'workflow_steps':50,'analytics_retention':analytics.retention},'safety':{'tool_approval_required':True,'shell_execution':False,'source_self_modification':False,'github_extension_code_execution':False}}
 @app.get('/api/v1/security/status')
 def security_status():return {'mode':'local-only','tool_allowlist':tools.list_tools(),'approval_required':settings.get()['tool_approval_required'],'shell_execution':False,'source_self_modification':False,'remote_access':'not configured'}
 @app.get('/api/v1/settings')
