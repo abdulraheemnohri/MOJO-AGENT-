@@ -341,7 +341,7 @@ The SQLite database is stored in `data/mojo_agent.sqlite3`. Stop the backend bef
 Update the source:
 
 ```bash
-git pull --ff-only origin implementation/full-platform
+git pull --ff-only origin main
 ```
 
 Then rerun the installer for your OS to refresh Python and Node dependencies. Existing SQLite data is retained; keep a backup before updating.
