@@ -35,6 +35,7 @@ class WorkflowStore:
  def delete(self,ident):
   with self.db() as c:
    c.execute("DELETE FROM workflow_runs WHERE workflow_id=?",(ident,))
+   c.execute("DELETE FROM workflow_schedules WHERE workflow_id=?",(ident,))
    return c.execute("DELETE FROM workflows WHERE id=?",(ident,)).rowcount==1
  def run(self,ident,tools):
   w=self.get(ident)

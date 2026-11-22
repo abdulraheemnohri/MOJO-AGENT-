@@ -60,6 +60,9 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
  var edgeSource by remember { mutableStateOf("") }
  var edgeTarget by remember { mutableStateOf("") }
  var edgeRelation by remember { mutableStateOf("related_to") }
+ var scheduleWorkflowId by remember { mutableStateOf("") }
+ var scheduleSeconds by remember { mutableStateOf("3600") }
+ var scheduleId by remember { mutableStateOf("") }
  var output by remember { mutableStateOf("Connect to your local MOJO AGENT service.") }
  var busy by remember { mutableStateOf(false) }
  fun request(path: String, method: String = "GET", json: String? = null) {
@@ -109,6 +112,20 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
       request("/workflows", "POST", JSONObject().put("name", workflowName).put("steps", steps).toString())
      }, enabled = !busy && workflowName.isNotBlank() && workflowText.isNotBlank()) { Text("Create") }
      OutlinedButton(onClick = { request("/workflows") }, enabled = !busy) { Text("List workflows") }
+    }
+    Text("Persistent scheduler", style = MaterialTheme.typography.titleMedium)
+    OutlinedTextField(scheduleWorkflowId, { scheduleWorkflowId = it }, label = { Text("Workflow ID") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(scheduleSeconds, { scheduleSeconds = it.filter(Char::isDigit).take(8) }, label = { Text("Interval seconds (60–2592000)") }, modifier = Modifier.fillMaxWidth())
+    Button(onClick = { request("/scheduler/schedules", "POST", JSONObject().put("workflow_id", scheduleWorkflowId).put("interval_seconds", scheduleSeconds.toIntOrNull() ?: 60).toString()) }, enabled = !busy && scheduleWorkflowId.isNotBlank() && (scheduleSeconds.toIntOrNull() ?: 0) in 60..2592000) { Text("Create schedule") }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { request("/scheduler/schedules") }, enabled = !busy) { Text("List schedules") }
+     Button(onClick = { request("/scheduler/tick", "POST", "{}") }, enabled = !busy) { Text("Run due now") }
+    }
+    OutlinedTextField(scheduleId, { scheduleId = it }, label = { Text("Schedule ID for controls") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { request("/scheduler/schedules/$scheduleId", "PATCH", JSONObject().put("enabled", false).toString()) }, enabled = !busy && scheduleId.isNotBlank()) { Text("Pause") }
+     OutlinedButton(onClick = { request("/scheduler/schedules/$scheduleId", "PATCH", JSONObject().put("enabled", true).toString()) }, enabled = !busy && scheduleId.isNotBlank()) { Text("Resume") }
+     OutlinedButton(onClick = { request("/scheduler/schedules/$scheduleId", "DELETE") }, enabled = !busy && scheduleId.isNotBlank()) { Text("Delete") }
     }
    }
    "Evolution" -> {

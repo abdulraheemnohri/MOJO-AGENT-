@@ -17,6 +17,8 @@ class Goal(BaseModel):goal:str=Field(min_length=1,max_length=2000)
 class MemoryInput(BaseModel):content:str=Field(min_length=1,max_length=10000);kind:str='episodic';importance:float=Field(default=.5,ge=0,le=1)
 class QInput(BaseModel):q:float;reward:float;next_max:float=0;alpha:float=Field(default=.1,ge=0,le=1);gamma:float=Field(default=.95,ge=0,le=1)
 class WorkflowInput(BaseModel):name:str=Field(min_length=1,max_length=120);steps:list[dict]=Field(min_length=1,max_length=50)
+class ScheduleInput(BaseModel):workflow_id:str;interval_seconds:int=Field(ge=60,le=2592000)
+class ScheduleEnabledInput(BaseModel):enabled:bool
 class NodeInput(BaseModel):label:str=Field(min_length=1,max_length=300);kind:str='concept';properties:dict={}
 class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weight:float=Field(default=1,ge=0,le=100)
 class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
@@ -84,7 +86,31 @@ def execute_tool(req:ToolInput):
  except PermissionError as e:raise HTTPException(403,str(e))
  except (ValueError,KeyError) as e:raise HTTPException(400,str(e))
 @app.get('/api/v1/workflows')
-def list_workflows():return {'items':workflows.list(),'history':workflows.history()}
+def list_workflows():return {'items':workflows.list(),'history':workflows.history(),'schedules':workflows.list_schedules()}
+@app.get('/api/v1/scheduler/schedules')
+def list_schedules():return {'items':workflows.list_schedules(),'max_schedules':100,'max_batch':10}
+@app.post('/api/v1/scheduler/schedules')
+def create_schedule(req:ScheduleInput):
+ try:
+  item=workflows.create_schedule(req.workflow_id,req.interval_seconds);analytics.record('schedule_created',{'interval_seconds':req.interval_seconds});return item
+ except KeyError as exc:raise HTTPException(404,str(exc))
+ except ValueError as exc:raise HTTPException(400,str(exc))
+@app.patch('/api/v1/scheduler/schedules/{schedule_id}')
+def set_schedule(schedule_id:str,req:ScheduleEnabledInput):
+ try:
+  item=workflows.set_schedule_enabled(schedule_id,req.enabled)
+  if item is None:raise HTTPException(404,'Schedule not found')
+  return item
+ except ValueError as exc:raise HTTPException(400,str(exc))
+@app.delete('/api/v1/scheduler/schedules/{schedule_id}')
+def delete_schedule(schedule_id:str):
+ if not workflows.delete_schedule(schedule_id):raise HTTPException(404,'Schedule not found')
+ return {'deleted':True,'id':schedule_id}
+@app.post('/api/v1/scheduler/tick')
+def scheduler_tick():
+ try:
+  result=workflows.run_due(tools,limit=10);analytics.record('scheduler_tick',{'executed':result['executed']});return result
+ except ValueError as exc:raise HTTPException(400,str(exc))
 @app.get('/api/v1/workflows/{workflow_id}/history')
 def workflow_history(workflow_id:str,limit:int=50):
  if not workflows.get(workflow_id):raise HTTPException(404,'Workflow not found')
