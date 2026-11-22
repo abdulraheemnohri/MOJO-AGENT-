@@ -32,3 +32,16 @@ def test_settings_validation_does_not_mutate():
 def test_database_backup_rejects_remote_clients():
  remote=TestClient(app,client=("192.168.1.50",50000))
  assert remote.get('/api/v1/backup/export').status_code==403
+
+
+def test_runtime_logs_are_bounded_safe_and_filterable():
+ client.get('/api/v1/health')
+ result=client.get('/api/v1/runtime/logs?limit=20')
+ assert result.status_code==200
+ body=result.json()
+ assert body['count']>=1 and body['payloads_recorded'] is False
+ assert body['items'][0]['path']=='/api/v1/runtime/logs'
+ assert client.get('/api/v1/runtime/logs?limit=501').status_code==400
+ assert client.get('/api/v1/runtime/logs?level=TRACE').status_code==400
+ cleared=client.post('/api/v1/runtime/logs/clear')
+ assert cleared.status_code==200 and cleared.json()['cleared']>=1

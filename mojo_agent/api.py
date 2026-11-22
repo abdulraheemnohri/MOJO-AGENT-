@@ -15,7 +15,14 @@ from .settings import SettingsStore
 import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
-memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={};RUNTIME_STARTED_AT=time.time()
+memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
+
+def _record_runtime_log(level,message,method=None,path=None,status=None,duration_ms=None):
+ entry={'time':time.time(),'level':level,'message':message,'method':method,'path':path,'status':status,'duration_ms':duration_ms}
+ with RUNTIME_LOG_LOCK:
+  RUNTIME_LOGS.append(entry)
+  if len(RUNTIME_LOGS)>RUNTIME_LOG_LIMIT: del RUNTIME_LOGS[:-RUNTIME_LOG_LIMIT]
+ return entry
 class Goal(BaseModel):goal:str=Field(min_length=1,max_length=2000)
 class MemoryInput(BaseModel):content:str=Field(min_length=1,max_length=10000);kind:str='episodic';importance:float=Field(default=.5,ge=0,le=1)
 class QInput(BaseModel):q:float;reward:float;next_max:float=0;alpha:float=Field(default=.1,ge=0,le=1);gamma:float=Field(default=.95,ge=0,le=1)
@@ -34,9 +41,26 @@ async def collect_safe_analytics(request, call_next):
  route=request.scope.get("route")
  route_name=getattr(route,"path",None) or "unmatched"
  if route_name != "/api/v1/analytics":
+  status=response.status_code
+  level='ERROR' if status>=500 else ('WARNING' if status>=400 else 'INFO')
+  _record_runtime_log(level,'HTTP request completed',request.method,route_name,status,round((time.perf_counter()-started)*1000,2))
   try:analytics.record("api_request",{"method":request.method,"route":route_name,"status":response.status_code,"duration_ms":round((time.perf_counter()-started)*1000,2)})
   except Exception:pass
  return response
+@app.get('/api/v1/runtime/logs')
+def runtime_logs(limit:int=100,level:str|None=None,q:str|None=None):
+ if limit<1 or limit>500: raise HTTPException(400,'limit must be between 1 and 500')
+ if level and level.upper() not in ('INFO','WARNING','ERROR'): raise HTTPException(400,'level must be INFO, WARNING or ERROR')
+ with RUNTIME_LOG_LOCK: items=list(RUNTIME_LOGS)
+ if level: items=[item for item in items if item['level']==level.upper()]
+ if q:
+  needle=q.casefold();items=[item for item in items if needle in item['message'].casefold() or needle in str(item['path']).casefold() or needle in str(item['method']).casefold()]
+ items=items[-limit:][::-1]
+ return {'items':items,'count':len(items),'capacity':RUNTIME_LOG_LIMIT,'source':'bounded in-memory request events','payloads_recorded':False}
+@app.post('/api/v1/runtime/logs/clear')
+def clear_runtime_logs():
+ with RUNTIME_LOG_LOCK: removed=len(RUNTIME_LOGS);RUNTIME_LOGS.clear()
+ return {'cleared':removed}
 @app.get('/api/v1/health')
 def health():return {'status':'ok','name':'MOJO AGENT','version':'0.9.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
 @app.get('/api/v1/runtime/status')
