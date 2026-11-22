@@ -86,8 +86,10 @@ class GitHubExtensionRegistry:
                 "repository":repo,"ref":ref,"manifest_path":path,"manifest_sha256":digest,
                 "manifest":data,"execution":"declarative-only","code_execution":False}
 
-    def install(self, repo, ref="main", path="mojo-extension.json"):
+    def install(self, repo, ref="main", path="mojo-extension.json", expected_sha256=None):
         item = self.preview(repo, ref, path)
+        if expected_sha256 and not __import__('hmac').compare_digest(item['manifest_sha256'], expected_sha256):
+            raise ExtensionError('Manifest changed since preview; preview it again before installation')
         data = item["manifest"]
         ident = f"{item['kind']}:{item['name']}"
         with self.db() as conn:
