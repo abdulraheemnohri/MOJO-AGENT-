@@ -30,7 +30,7 @@ def test_github_extension_install_preview_and_skill_run(monkeypatch,tmp_path):
         api.extensions=registry
         preview=client.post("/api/v1/extensions/github/preview",json={"repository":"sample/repo","ref":"main","manifest_path":"skill.json"})
         assert preview.status_code==200 and preview.json()["code_execution"] is False if "code_execution" in preview.json() else preview.status_code==200
-        installed=client.post("/api/v1/extensions/github/install",json={"repository":"sample/repo","ref":"main","manifest_path":"skill.json"})
+        installed=client.post("/api/v1/extensions/github/install",json={"repository":"sample/repo","ref":"main","manifest_path":"skill.json","expected_sha256":"c"*64})
         assert installed.status_code==200 and installed.json()["kind"]=="skill"
         run=client.post("/api/v1/skills/test-skill/run",json={"goal":"inspect"})
         assert run.status_code==200 and run.json()["allowed_tools"]==["text_stats"]
