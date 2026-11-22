@@ -150,6 +150,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var githubRef by remember { mutableStateOf("main") }
  var manifestPath by remember { mutableStateOf("mojo-extension.json") }
  var extensionPreviewed by remember { mutableStateOf(false) }
+ var manifestHash by remember { mutableStateOf("") }
  var runtimeEnabled by remember { mutableStateOf(false) }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -159,7 +160,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  val bottomTabs = listOf("Home", "Planner", "Workflows", "Settings")
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
-  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { val prefs = JSONObject(it); theme = prefs.optString("theme", theme); agentMode = prefs.optString("runtime_mode", agentMode); modelPath = prefs.optString("litertlm_model", modelPath); runtimeEnabled = prefs.optBoolean("litertlm_enabled", false) } catch (_: Exception) { } }; if (path == "/extensions/github/preview") extensionPreviewed = !it.startsWith("HTTP"); if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
+  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { val prefs = JSONObject(it); theme = prefs.optString("theme", theme); agentMode = prefs.optString("runtime_mode", agentMode); modelPath = prefs.optString("litertlm_model", modelPath); runtimeEnabled = prefs.optBoolean("litertlm_enabled", false) } catch (_: Exception) { } }; if (path == "/extensions/github/preview") { extensionPreviewed = !it.startsWith("HTTP"); try { manifestHash = JSONObject(it).optString("manifest_sha256", "") } catch (_: Exception) { manifestHash = "" } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
  }
  val darkMode = !(theme == "light" || (theme == "system" && !isSystemInDarkTheme()))
  val palette = if (darkMode) darkColorScheme(
@@ -337,10 +338,10 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
     Text("Only declarative JSON manifests are installed. Repository code and shell scripts are never executed.")
     OutlinedTextField(githubRepo, { githubRepo = it }, label = { Text("GitHub repository owner/name") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(githubRef, { githubRef = it }, label = { Text("Branch or tag") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(manifestPath, { manifestPath = it; extensionPreviewed = false }, label = { Text("Manifest path") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(manifestPath, { manifestPath = it; extensionPreviewed = false; manifestHash = "" }, label = { Text("Manifest path") }, modifier = Modifier.fillMaxWidth())
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-     OutlinedButton(onClick = { extensionPreviewed = false; request("/extensions/github/preview", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).toString()) }, enabled = !busy && githubRepo.contains("/")) { Text("Preview") }
-     Button(onClick = { request("/extensions/github/install", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).toString()); extensionPreviewed = false }, enabled = !busy && extensionPreviewed) { Text("Install") }
+     OutlinedButton(onClick = { extensionPreviewed = false; manifestHash = ""; request("/extensions/github/preview", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).toString()) }, enabled = !busy && githubRepo.contains("/")) { Text("Preview") }
+     Button(onClick = { request("/extensions/github/install", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).put("expected_sha256", manifestHash).toString()); extensionPreviewed = false }, enabled = !busy && extensionPreviewed) { Text("Install") }
     }
     OutlinedButton(onClick = { request("/extensions") }, enabled = !busy) { Text("List installed extensions") }
    }
