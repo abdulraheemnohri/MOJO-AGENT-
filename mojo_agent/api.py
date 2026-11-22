@@ -12,10 +12,11 @@ from .workflows import WorkflowStore
 from .knowledge import KnowledgeGraph
 from .analytics import Analytics
 from .settings import SettingsStore
+from .litertlm import LiteRTLM,LiteRTLMError
 import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
-memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
+memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();litertlm=LiteRTLM();candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
 
 def _record_runtime_log(level,message,method=None,path=None,status=None,duration_ms=None):
  entry={'time':time.time(),'level':level,'message':message,'method':method,'path':path,'status':status,'duration_ms':duration_ms}
@@ -34,6 +35,8 @@ class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weigh
 class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
 class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None
 class ApprovalInput(BaseModel):approved:bool
+class LiteRTLMRunInput(BaseModel):model:str=Field(min_length=1,max_length=512);prompt:str=Field(min_length=1,max_length=6000);backend:str='cpu';approved:bool=False
+class LiteRTLMBenchmarkInput(BaseModel):model:str=Field(min_length=1,max_length=512);approved:bool=False
 @app.middleware("http")
 async def collect_safe_analytics(request, call_next):
  started=time.perf_counter()
@@ -61,6 +64,30 @@ def runtime_logs(limit:int=100,level:str|None=None,q:str|None=None):
 def clear_runtime_logs():
  with RUNTIME_LOG_LOCK: removed=len(RUNTIME_LOGS);RUNTIME_LOGS.clear()
  return {'cleared':removed}
+@app.get('/api/v1/litertlm/status')
+def litertlm_status():
+ cfg=settings.get()
+ return {**litertlm.status(),'enabled':cfg.get('litertlm_enabled',False),'backend':cfg.get('litertlm_backend','cpu'),'configured_timeout_seconds':cfg.get('litertlm_timeout_seconds',120)}
+@app.post('/api/v1/litertlm/run')
+def litertlm_run(req:LiteRTLMRunInput):
+ cfg=settings.get()
+ if not cfg.get('litertlm_enabled',False):raise HTTPException(403,'LiteRT-LM is disabled in Settings')
+ try:
+  result=LiteRTLM(timeout_seconds=cfg.get('litertlm_timeout_seconds',120)).run(req.model,req.prompt,req.backend,req.approved)
+  analytics.record('litertlm_run',{'backend':req.backend,'model_source':result['model_source']});return result
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except ValueError as exc:raise HTTPException(400,str(exc))
+ except LiteRTLMError as exc:raise HTTPException(503,str(exc))
+@app.post('/api/v1/litertlm/benchmark')
+def litertlm_benchmark(req:LiteRTLMBenchmarkInput):
+ cfg=settings.get()
+ if not cfg.get('litertlm_enabled',False):raise HTTPException(403,'LiteRT-LM is disabled in Settings')
+ try:
+  result=LiteRTLM(timeout_seconds=cfg.get('litertlm_timeout_seconds',120)).benchmark(req.model,req.approved)
+  analytics.record('litertlm_benchmark');return result
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except ValueError as exc:raise HTTPException(400,str(exc))
+ except LiteRTLMError as exc:raise HTTPException(503,str(exc))
 @app.get('/api/v1/health')
 def health():return {'status':'ok','name':'MOJO AGENT','version':'0.9.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
 @app.get('/api/v1/runtime/status')
@@ -97,11 +124,14 @@ def export_database_backup(request:Request):
 @app.post('/api/v1/settings/validate')
 def validate_settings(req:SettingsInput):
  values=req.model_dump(exclude_unset=True)
- unsupported=set(values)-{'theme','tool_approval_required'}
+ unsupported=set(values)-{'theme','tool_approval_required','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds'}
  if unsupported: raise HTTPException(400,'These settings require a service restart or are not remotely editable: '+', '.join(sorted(unsupported)))
  if values.get('theme') not in (None,'dark','light','system'): raise HTTPException(400,'theme must be dark, light or system')
  if values.get('tool_approval_required') is False: raise HTTPException(400,'Tool approval is mandatory and cannot be disabled')
  if values.get('tool_approval_required') not in (None,True): raise HTTPException(400,'tool_approval_required must be boolean')
+ if values.get('litertlm_enabled') not in (None,True,False): raise HTTPException(400,'litertlm_enabled must be boolean')
+ if values.get('litertlm_backend') not in (None,'cpu','gpu'): raise HTTPException(400,'litertlm_backend must be cpu or gpu')
+ if values.get('litertlm_timeout_seconds') is not None and (not isinstance(values['litertlm_timeout_seconds'],int) or not 10<=values['litertlm_timeout_seconds']<=180): raise HTTPException(400,'litertlm_timeout_seconds must be between 10 and 180')
  return {'valid':True,'accepted_fields':sorted(values),'restart_required':False,'protected_invariants':{'tool_approval_required':True,'llm_enabled':False,'source_self_modification':False}}
 def _discover_ipv4_addresses():
  addresses=[]
