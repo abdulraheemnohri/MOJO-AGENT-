@@ -12,8 +12,9 @@ def test_skill_and_tool_manifests_are_declarative_only(tmp_path, monkeypatch):
         data=skill if path.endswith("skill.json") else tool
         return data,"a"*64
     monkeypatch.setattr("mojo_agent.extensions._fetch_manifest",fake)
-    assert registry.install("acme/demo","main","skill.json")["kind"]=="skill"
-    assert registry.install("acme/demo","main","tool.json")["kind"]=="tool"
+    assert registry.install("acme/demo","main","skill.json",expected_sha256="a"*64)["kind"]=="skill"
+    with pytest.raises(ExtensionError): registry.install("acme/demo","main","tool.json",expected_sha256="d"*64)
+    assert registry.install("acme/demo","main","tool.json",expected_sha256="a"*64)["kind"]=="tool"
     assert len(registry.list())==2
     with pytest.raises(PermissionError): registry.execute_tool("uppercase-text",{"text":"hello"})
     assert registry.execute_tool("uppercase-text",{"text":"hello"},approved=True)=="HELLO"
@@ -33,6 +34,7 @@ def test_settings_keep_algorithms_default_and_require_runtime_enable(tmp_path):
     result=store.update({"litertlm_enabled":True,"runtime_mode":"hybrid","litertlm_backend":"cpu"})
     assert result["runtime_mode"]=="hybrid"
     with pytest.raises(ValueError):store.update({"tool_approval_required":False})
+    with pytest.raises(ValueError):store.update({"litertlm_enabled":False})
 
 class FakeModelRuntime:
     def __init__(self): self.called=False
