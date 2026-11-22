@@ -1,9 +1,11 @@
 package org.mojoagent.app
 
 import android.os.Bundle
+import android.os.Environment
 import android.content.Context
 import android.net.wifi.WifiManager
 import java.net.InetAddress
+import java.io.File
 import java.net.NetworkInterface
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -96,8 +98,25 @@ class MainActivity : ComponentActivity() {
    override fun onFailure(call: Call, e: IOException) { runOnUiThread { done("Connection failed: " + (e.message ?: "unknown error")) } }
    override fun onResponse(call: Call, response: Response) {
     response.use {
-     val text = it.body?.string() ?: ""
-     runOnUiThread { done(if (it.isSuccessful) text else "HTTP ${it.code}: $text") }
+     if (path == "/backup/export" && it.isSuccessful) {
+      val bytes = it.body?.bytes() ?: byteArrayOf()
+      val directory = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: filesDir
+      val backupFile = File(directory, "mojo-agent-backup.sqlite3")
+      backupFile.writeBytes(bytes)
+      runOnUiThread { done("Database backup saved to: " + backupFile.absolutePath + " (" + bytes.size + " bytes)") }
+     } else {
+      val text = it.body?.string() ?: ""
+      runOnUiThread {
+       if (it.isSuccessful && path == "/runtime/status") {
+        try {
+         val parsed = JSONObject(text)
+         val db = parsed.optJSONObject("database")
+         runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown")
+        } catch (_: Exception) { }
+       }
+       done(if (it.isSuccessful) text else "HTTP " + it.code + ": " + text)
+      }
+     }
     }
    }
   })
@@ -145,7 +164,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
   Divider(modifier = Modifier.padding(12.dp))
   Text("Local-first · protected core", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(20.dp))
  } }) {
- Column(Modifier.fillMaxSize().widthIn(max = 960.dp).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+ Column(Modifier.fillMaxSize().widthIn(max = 960.dp).verticalScroll(rememberScrollState()).padding(if (compactMode) 12.dp else 18.dp), verticalArrangement = Arrangement.spacedBy(if (compactMode) 8.dp else 12.dp)) {
   Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
    TextButton(onClick = { scope.launch { drawerState.open() } }) { Text("☰ Menu") }
    Column(Modifier.weight(1f)) { Text("MOJO AGENT", style = MaterialTheme.typography.headlineMedium); Text("Algorithmic intelligence · local-first") }
@@ -172,7 +191,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
     } }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
      OutlinedButton(onClick = { request("/settings/validate", "POST", JSONObject().put("theme", theme).put("tool_approval_required", true).toString()) }, enabled = !busy) { Text("Validate settings") }
-     OutlinedButton(onClick = { request("/backup/export") }, enabled = !busy) { Text("Backup endpoint") }
+     OutlinedButton(onClick = { request("/backup/export") }, enabled = !busy) { Text("Export database backup") }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { request("/health") }, enabled = !busy) { Text("Health check") }; OutlinedButton(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Diagnostics") } }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { request("/discovery") }, enabled = !busy) { Text("Server discovery") }; OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load settings") } }

@@ -17,7 +17,7 @@ def test_runtime_status_and_database_backup():
  assert status.json()['database']['integrity']=='ok'
  backup=client.get('/api/v1/backup/export')
  assert backup.status_code==200
- assert backup.content[:16]==b'SQLite format 3\\x00'
+ assert backup.content[:16]==b'SQLite format 3'+bytes([0])
  assert int(backup.headers['X-Backup-Size'])==len(backup.content)
 
 def test_settings_validation_does_not_mutate():
