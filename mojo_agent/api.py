@@ -10,7 +10,7 @@ from .workflows import WorkflowStore
 from .knowledge import KnowledgeGraph
 from .analytics import Analytics
 from .settings import SettingsStore
-import math,uuid
+import math,uuid,time,platform
 app=FastAPI(title='MOJO AGENT API',version='0.6.0',description='Local algorithmic agent runtime; no LLM required.')
 memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={}
 class Goal(BaseModel):goal:str=Field(min_length=1,max_length=2000)
@@ -22,6 +22,16 @@ class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weigh
 class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
 class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None
 class ApprovalInput(BaseModel):approved:bool
+@app.middleware("http")
+async def collect_safe_analytics(request, call_next):
+ started=time.perf_counter()
+ response=await call_next(request)
+ route=request.scope.get("route")
+ route_name=getattr(route,"path",None) or "unmatched"
+ if route_name != "/api/v1/analytics":
+  try:analytics.record("api_request",{"method":request.method,"route":route_name,"status":response.status_code,"duration_ms":round((time.perf_counter()-started)*1000,2)})
+  except Exception:pass
+ return response
 @app.get('/api/v1/health')
 def health():return {'status':'ok','name':'MOJO AGENT','version':'0.6.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
 @app.post('/api/v1/plan')
@@ -107,6 +117,10 @@ def add_edge(req:EdgeInput):
 def analytics_summary(limit:int=20,event:str|None=None):
  try:return analytics.summary(limit,event)
  except ValueError as e:raise HTTPException(400,str(e))
+@app.get('/api/v1/diagnostics')
+def diagnostics():
+ graph_snapshot=knowledge.snapshot()
+ return {'status':'ok','python':platform.python_version(),'platform':platform.platform(),'runtime':'python-reference','llm_enabled':False,'database':'sqlite','modules':{'memory_records':len(memory.search('',200)),'workflows':len(workflows.list()),'knowledge_nodes':len(graph_snapshot['nodes']),'knowledge_edges':len(graph_snapshot['edges']),'evolution_candidates':len(evolution_store.list_candidates(500))},'limits':{'memory_search':200,'workflow_steps':50,'analytics_retention':analytics.retention},'safety':{'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
 @app.get('/api/v1/security/status')
 def security_status():return {'mode':'local-only','tool_allowlist':tools.list_tools(),'approval_required':settings.get()['tool_approval_required'],'shell_execution':False,'source_self_modification':False,'remote_access':'not configured'}
 @app.get('/api/v1/settings')
@@ -155,10 +169,6 @@ class MemoryImport(BaseModel):
 @app.post('/api/v1/memory/import')
 def import_memory(req:MemoryImport):
  if req.format!='mojo-memory-v1':raise HTTPException(400,'Unsupported memory export format')
- added=0
- try:
-  for item in req.items:
-   if not isinstance(item,dict):raise ValueError('Each memory item must be an object')
-   memory.add(item.get('content'),item.get('kind','episodic'),item.get('importance',.5));added+=1
- except (ValueError,TypeError) as exc:raise HTTPException(400,f'Import stopped after {added} records: {exc}')
+ try:added=memory.import_many(req.items)
+ except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
  analytics.record('memory_imported',{'count':added});return {'imported':added}

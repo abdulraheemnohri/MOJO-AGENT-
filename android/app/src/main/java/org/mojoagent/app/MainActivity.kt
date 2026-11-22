@@ -55,18 +55,24 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
  var workflowText by remember { mutableStateOf("Hello from MOJO AGENT") }
  var nodeText by remember { mutableStateOf("New concept") }
  var theme by remember { mutableStateOf("dark") }
+ var candidateId by remember { mutableStateOf("") }
+ var confirmApproval by remember { mutableStateOf(false) }
+ var edgeSource by remember { mutableStateOf("") }
+ var edgeTarget by remember { mutableStateOf("") }
+ var edgeRelation by remember { mutableStateOf("related_to") }
  var output by remember { mutableStateOf("Connect to your local MOJO AGENT service.") }
  var busy by remember { mutableStateOf(false) }
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
-  call(base, path, method, json) { output = it; busy = false }
+  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { theme = JSONObject(it).optString("theme", theme) } catch (_: Exception) { } }; busy = false }
  }
+ MaterialTheme(colorScheme = if (theme == "light") lightColorScheme() else darkColorScheme()) {
  Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
   Text("MOJO AGENT", style = MaterialTheme.typography.headlineMedium)
   Text("Algorithmic intelligence · local-first · no LLM required")
   OutlinedTextField(base, { base = it }, label = { Text("Local API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
   Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-   listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Settings").forEach { item ->
+   listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Settings").forEach { item ->
     FilterChip(selected = tab == item, onClick = { tab = item }, label = { Text(item) })
    }
   }
@@ -113,6 +119,11 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
      OutlinedButton(onClick = { request("/evolution/experiment", "POST", "{}") }, enabled = !busy) { Text("Run experiment") }
     }
     OutlinedButton(onClick = { request("/evolution/status") }, enabled = !busy) { Text("Refresh candidates") }
+    OutlinedTextField(candidateId, { candidateId = it }, label = { Text("Candidate ID from response") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/evolution/candidates/$candidateId/validate", "POST", "{}") }, enabled = !busy && candidateId.isNotBlank()) { Text("Validate") }
+     OutlinedButton(onClick = { confirmApproval = true }, enabled = !busy && candidateId.isNotBlank()) { Text("Approve…") }
+    }
    }
    "Knowledge" -> {
     Text("Knowledge graph", style = MaterialTheme.typography.titleLarge)
@@ -121,11 +132,20 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
      Button(onClick = { request("/knowledge/nodes", "POST", JSONObject().put("label", nodeText).put("kind", "concept").toString()) }, enabled = !busy && nodeText.isNotBlank()) { Text("Add concept") }
      OutlinedButton(onClick = { request("/knowledge") }, enabled = !busy) { Text("Refresh graph") }
     }
+    OutlinedTextField(edgeSource, { edgeSource = it }, label = { Text("Source node ID") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(edgeTarget, { edgeTarget = it }, label = { Text("Target node ID") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(edgeRelation, { edgeRelation = it }, label = { Text("Relationship") }, modifier = Modifier.fillMaxWidth())
+    Button(onClick = { request("/knowledge/edges", "POST", JSONObject().put("source", edgeSource).put("target", edgeTarget).put("relation", edgeRelation).put("weight", 1).toString()) }, enabled = !busy && edgeSource.isNotBlank() && edgeTarget.isNotBlank() && edgeSource != edgeTarget && edgeRelation.isNotBlank()) { Text("Connect concepts") }
    }
    "Tools" -> {
     Text("Allowlisted tools", style = MaterialTheme.typography.titleLarge)
     Button(onClick = { request("/tools") }, enabled = !busy) { Text("Load available tools") }
     Text("Tool execution requires explicit approval. Shell commands are not available.")
+   }
+   "Diagnostics" -> {
+    Text("Runtime diagnostics", style = MaterialTheme.typography.titleLarge)
+    Button(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Run diagnostics") }
+    Text("Only runtime metadata and aggregate counts are returned; personal content is not collected.")
    }
    "Analytics" -> {
     Text("Runtime analytics", style = MaterialTheme.typography.titleLarge)
@@ -156,5 +176,13 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
   Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
    Text(output, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
   }
+  }
  }
+ if (confirmApproval) AlertDialog(
+  onDismissRequest = { confirmApproval = false },
+  title = { Text("Approve strategy?") },
+  text = { Text("This activates the validated candidate as champion. Protected control code and source files are not modified.") },
+  confirmButton = { TextButton(onClick = { confirmApproval = false; request("/evolution/candidates/$candidateId/approve", "POST", JSONObject().put("approved", true).toString()) }) { Text("Approve candidate") } },
+  dismissButton = { TextButton(onClick = { confirmApproval = false }) { Text("Cancel") } }
+ )
 }

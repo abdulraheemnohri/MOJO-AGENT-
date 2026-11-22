@@ -71,5 +71,33 @@ class MemoryStore:
             cur = db.execute("DELETE FROM memories WHERE id=?", (memory_id,))
             return cur.rowcount == 1
 
+    def import_many(self, items):
+        """Validate the complete batch, then insert it atomically."""
+        if not isinstance(items, list) or len(items) > 5000:
+            raise ValueError("items must be a list containing at most 5000 records")
+        normalized = []
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise ValueError(f"item {index} must be an object")
+            content = item.get("content")
+            kind = item.get("kind", "episodic")
+            importance = item.get("importance", .5)
+            if not isinstance(content, str) or not content.strip() or len(content) > 10000:
+                raise ValueError(f"item {index}: content must contain 1..10000 characters")
+            if kind not in KINDS:
+                raise ValueError(f"item {index}: unsupported memory kind")
+            try:
+                importance = float(importance)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"item {index}: importance must be numeric") from exc
+            if not 0 <= importance <= 1:
+                raise ValueError(f"item {index}: importance must be between 0 and 1")
+            normalized.append((kind, content.strip(), importance))
+        with self._db() as db:
+            db.executemany(
+                "INSERT INTO memories(kind,content,importance) VALUES(?,?,?)",
+                normalized)
+        return len(normalized)
+
     def export_all(self):
         return self.search("", 200)

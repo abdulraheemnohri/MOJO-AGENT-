@@ -1,12 +1,20 @@
 # MOJO AGENT implementation status
 
-## Expanded modules
-- Local workflow registry, synchronous deterministic runner and run history.
-- SQLite knowledge graph nodes and weighted relationship edges.
-- Tool discovery and explicit approval-gated execution API.
-- Session analytics, security posture and read-only settings endpoints.
-- Dijkstra/A* heap tie-breaker fix and TF-IDF tokenizer fix.
-- SVG brand mark and regression tests.
+## Implemented
+- Cross-platform Python reference API, React dashboard and Android Compose client.
+- SQLite persistence for memory, workflows, knowledge graph, analytics, settings and evolution candidates/champion.
+- Atomic memory batch import and JSON export.
+- Goal planner, deterministic algorithms, bounded strategy evolution and manual candidate validation/approval.
+- Allowlisted tools with mandatory approval; shell execution disabled.
+- Workflow CRUD, synchronous execution and execution history.
+- Knowledge graph node/edge CRUD and search.
+- Safe diagnostics and privacy-limited API request telemetry.
+- Dashboard workflow editing/history, memory search, graph relationship management, analytics and theme controls.
+- Android screens for runtime, planning, memory, workflows, evolution, knowledge, tools, analytics, security, diagnostics and settings.
 
 ## Deliberate limitations
-Workflow execution is synchronous and local, not a distributed queue. Analytics are in-process counters, not durable telemetry. Settings are read-only. Knowledge graph deletion, merge and import are future work. Native Mojo compilation must be validated on a supported toolchain; Python is the portable reference runtime. Android and desktop native packaging need dedicated build environments and signing credentials.
+- No LLM integration by design.
+- Workflow runner is synchronous; no background scheduler or distributed queue.
+- Android still uses a single Compose activity and a raw JSON response panel; native file pickers, full workflow editor and structured list rendering are incomplete.
+- Native Mojo compiler compatibility and Windows installer packaging require separate toolchain validation.
+- API defaults to loopback; physical-device access should use a trusted local connection such as ADB reverse.
