@@ -22,7 +22,7 @@ def test_litertlm_settings_validation():
     })
     assert good.status_code==200 and good.json()["valid"] is True
     assert client.post("/api/v1/settings/validate",json={"litertlm_backend":"remote"}).status_code==400
-    assert client.post("/api/v1/settings/validate",json={"litertlm_timeout_seconds":999}).status_code==400
+    assert client.post("/api/v1/settings/validate",json={"litertlm_timeout_seconds":999}).status_code==422
 
 def test_litertlm_settings_persist(tmp_path):
     original=api.settings
