@@ -25,7 +25,8 @@ class SettingsStore:
   if 'litertlm_backend' in values and values['litertlm_backend'] not in {'cpu','gpu'}:raise ValueError('litertlm_backend must be cpu or gpu')
   if 'litertlm_timeout_seconds' in values and (not isinstance(values['litertlm_timeout_seconds'],int) or not 10<=values['litertlm_timeout_seconds']<=180):raise ValueError('litertlm_timeout_seconds must be 10-180')
   if 'litertlm_model' in values and (not isinstance(values['litertlm_model'],str) or len(values['litertlm_model'])>512):raise ValueError('litertlm_model must be a string up to 512 characters')
-  current=self.get();effective_mode=values.get('runtime_mode',current['runtime_mode']);effective_enabled=values.get('litertlm_enabled',current['litertlm_enabled'])\n  if effective_mode in {'hybrid','litertlm'} and not effective_enabled:raise ValueError('Enable LiteRT-LM before selecting hybrid or litertlm mode')
+  current=self.get();effective_mode=values.get('runtime_mode',current['runtime_mode']);effective_enabled=values.get('litertlm_enabled',current['litertlm_enabled'])
+  if effective_mode in {'hybrid','litertlm'} and not effective_enabled:raise ValueError('Enable LiteRT-LM before selecting hybrid or litertlm mode')
   with self.db() as c:
    for k,v in values.items():c.execute('INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(k,json.dumps(v)))
   return self.get()
