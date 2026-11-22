@@ -340,6 +340,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve local inference", Modifier.weight(1f)); Switch(checked = modelApproval, onCheckedChange = { modelApproval = it }) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
      Button(onClick = { request("/settings", "PATCH", JSONObject().put("runtime_mode", agentMode).put("litertlm_enabled", runtimeEnabled).put("litertlm_model", modelPath).put("litertlm_backend", modelBackend).put("litertlm_timeout_seconds", modelTimeout.toIntOrNull() ?: 120).toString()) }, enabled = !busy && (agentMode == "algorithms" || runtimeEnabled) && (modelTimeout.toIntOrNull() ?: 0) in 10..180) { Text("Save runtime config") }
+     OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load runtime settings") }
      OutlinedButton(onClick = { request("/agent/runtime") }, enabled = !busy) { Text("Runtime status") }
     }
     Button(onClick = { request("/agent/run", "POST", JSONObject().put("goal", goal).put("mode", agentMode).put("model", modelPath).put("backend", modelBackend).put("approved", modelApproval).toString()) }, enabled = !busy && goal.isNotBlank() && (agentMode == "algorithms" || (runtimeEnabled && modelPath.isNotBlank() && modelApproval)), modifier = Modifier.fillMaxWidth()) { Text("Run agent") }
