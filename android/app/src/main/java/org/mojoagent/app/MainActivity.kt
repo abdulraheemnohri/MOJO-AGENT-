@@ -154,6 +154,11 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var runtimeEnabled by remember { mutableStateOf(false) }
  var modelBackend by remember { mutableStateOf("cpu") }
  var modelTimeout by remember { mutableStateOf("120") }
+ var toolName by remember { mutableStateOf("calculator") }
+ var toolInput by remember { mutableStateOf("2+2") }
+ var toolApproval by remember { mutableStateOf(false) }
+ var extensionId by remember { mutableStateOf("") }
+ var skillName by remember { mutableStateOf("") }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
@@ -315,8 +320,14 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    }
    "Tools" -> {
     Text("Allowlisted tools", style = MaterialTheme.typography.titleLarge)
-    Button(onClick = { request("/tools") }, enabled = !busy) { Text("Load available tools") }
-    Text("Tool execution requires explicit approval. Shell commands are not available.")
+    Text("Built-in and installed tools are approval-gated. Shell execution is not available.")
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+     listOf("calculator", "text_stats").forEach { name -> FilterChip(selected = toolName == name, onClick = { toolName = name; toolInput = if (name == "calculator") "2+2" else "" }, label = { Text(name) }) }
+    }
+    OutlinedTextField(toolInput, { toolInput = it }, label = { Text(if (toolName == "calculator") "Arithmetic expression" else "Text to analyze") }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve this execution", Modifier.weight(1f)); Switch(checked = toolApproval, onCheckedChange = { toolApproval = it }) }
+    Button(onClick = { val args = if (toolName == "calculator") JSONObject().put("expression", toolInput) else JSONObject().put("text", toolInput); request("/tools/execute", "POST", JSONObject().put("name", toolName).put("arguments", args).put("approved", toolApproval).toString()) }, enabled = !busy && toolApproval && toolInput.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Execute approved tool") }
+    OutlinedButton(onClick = { request("/tools") }, enabled = !busy) { Text("Refresh tool registry") }
    }
    "Runtime & Models" -> {
     Text("Agent runtime", style = MaterialTheme.typography.titleLarge)
@@ -347,6 +358,10 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
      Button(onClick = { request("/extensions/github/install", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).put("expected_sha256", manifestHash).toString()); extensionPreviewed = false }, enabled = !busy && extensionPreviewed) { Text("Install") }
     }
     OutlinedButton(onClick = { request("/extensions") }, enabled = !busy) { Text("List installed extensions") }
+    OutlinedTextField(extensionId, { extensionId = it }, label = { Text("Extension ID (skill:name or tool:name)") }, modifier = Modifier.fillMaxWidth())
+    OutlinedButton(onClick = { request("/extensions/$extensionId", "DELETE") }, enabled = !busy && extensionId.contains(":")) { Text("Uninstall extension") }
+    OutlinedTextField(skillName, { skillName = it }, label = { Text("Installed skill name") }, modifier = Modifier.fillMaxWidth())
+    Button(onClick = { request("/skills/$skillName/run", "POST", JSONObject().put("goal", goal).toString()) }, enabled = !busy && skillName.isNotBlank() && goal.isNotBlank()) { Text("Run skill plan") }
    }
    "Runtime Logs" -> {
     Text("Runtime event log", style = MaterialTheme.typography.titleLarge)
