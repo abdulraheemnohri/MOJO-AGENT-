@@ -16,6 +16,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -104,7 +106,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, discover: ((List<String>) -> Unit) -> Unit) {
- var base by remember { mutableStateOf("http://10.0.2.2:8766/api/v1") }
+ val context = LocalContext.current
+ var base by remember { mutableStateOf(context.getSharedPreferences("mojo", Context.MODE_PRIVATE).getString("api_base", "http://10.0.2.2:8766/api/v1") ?: "http://10.0.2.2:8766/api/v1") }
  var tab by remember { mutableStateOf("Home") }
  var goal by remember { mutableStateOf("Create a project plan") }
  var memoryText by remember { mutableStateOf("") }
@@ -124,26 +127,45 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var scanning by remember { mutableStateOf(false) }
  var output by remember { mutableStateOf("Connect to your local MOJO AGENT service.") }
  var busy by remember { mutableStateOf(false) }
+ val drawerState = rememberDrawerState(DrawerValue.Closed)
+ val scope = rememberCoroutineScope()
+ val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Backend Control", "Settings")
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
   call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { theme = JSONObject(it).optString("theme", theme) } catch (_: Exception) { } }; busy = false }
  }
  MaterialTheme(colorScheme = if (theme == "light" || (theme == "system" && !isSystemInDarkTheme())) lightColorScheme() else darkColorScheme()) {
+ ModalNavigationDrawer(drawerState = drawerState, drawerContent = { ModalDrawerSheet {
+  Text("MOJO AGENT", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(20.dp))
+  Text("NAVIGATION", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+  menuItems.forEach { item -> NavigationDrawerItem(label = { Text(item) }, selected = tab == item, onClick = { tab = item; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 10.dp)) }
+  Divider(modifier = Modifier.padding(12.dp))
+  Text("Local-first · protected core", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(20.dp))
+ } }) {
  Column(Modifier.fillMaxSize().widthIn(max = 960.dp).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-  Text("MOJO AGENT", style = MaterialTheme.typography.headlineMedium)
-  Text("Algorithmic intelligence · local-first · no LLM required")
-  OutlinedTextField(base, { base = it }, label = { Text("Backend API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+   TextButton(onClick = { scope.launch { drawerState.open() } }) { Text("☰ Menu") }
+   Column(Modifier.weight(1f)) { Text("MOJO AGENT", style = MaterialTheme.typography.headlineMedium); Text("Algorithmic intelligence · local-first") }
+   Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.small) { Text("v0.9", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall) }
+  }
+  OutlinedTextField(base, { base = it }, label = { Text("Backend API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true, supportingText = { Text("Saved locally on this device") })
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
    OutlinedButton(onClick = { scanning = true; discover { servers = it; scanning = false } }, enabled = !busy && !scanning) { Text(if (scanning) "Scanning LAN…" else "Find backend on Wi-Fi") }
    OutlinedButton(onClick = { request("/discovery") }, enabled = !busy) { Text("Server info") }
+   OutlinedButton(onClick = { context.getSharedPreferences("mojo", Context.MODE_PRIVATE).edit().putString("api_base", base.trimEnd('/')).apply(); output = "Backend address saved on this device." }, enabled = base.startsWith("http")) { Text("Save URL") }
   }
   servers.forEach { server -> OutlinedButton(onClick = { base = server; request("/health") }, modifier = Modifier.fillMaxWidth()) { Text("Use $server") } }
-  Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-   listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Settings").forEach { item ->
-    FilterChip(selected = tab == item, onClick = { tab = item }, label = { Text(item) })
-   }
-  }
   when (tab) {
+   "Backend Control" -> {
+    Text("Backend control centre", style = MaterialTheme.typography.titleLarge)
+    Text("Inspect the API, discover LAN interfaces, and review runtime configuration. Process start/stop is managed by the host operating system.")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { request("/health") }, enabled = !busy) { Text("Health check") }; OutlinedButton(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Diagnostics") } }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { request("/discovery") }, enabled = !busy) { Text("Server discovery") }; OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load settings") } }
+    Text("Connection address", style = MaterialTheme.typography.titleMedium)
+    OutlinedTextField(base, { base = it }, label = { Text("API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+    Button(onClick = { context.getSharedPreferences("mojo", Context.MODE_PRIVATE).edit().putString("api_base", base.trimEnd('/')).apply(); request("/health") }, enabled = !busy && base.startsWith("http")) { Text("Save and test connection") }
+    Text("LAN mode requires the backend to be explicitly started with --host 0.0.0.0 on a trusted private network. Do not expose port 8766 to the internet.")
+   }
    "Home" -> {
     Text("Runtime", style = MaterialTheme.typography.titleLarge)
     Button(onClick = { request("/health") }, enabled = !busy) { Text("Check backend") }
@@ -258,6 +280,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    Text(output, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
   }
   }
+ }
  }
  if (confirmApproval) AlertDialog(
   onDismissRequest = { confirmApproval = false },
