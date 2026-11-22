@@ -273,6 +273,14 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
     Button(onClick = { request("/tools") }, enabled = !busy) { Text("Load available tools") }
     Text("Tool execution requires explicit approval. Shell commands are not available.")
    }
+   "Runtime Logs" -> {
+    Text("Runtime event log", style = MaterialTheme.typography.titleLarge)
+    Text("Bounded in-memory events. Request bodies and credentials are not recorded.", style = MaterialTheme.typography.bodySmall)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/runtime/logs?limit=200") }, enabled = !busy) { Text("Refresh logs") }
+     OutlinedButton(onClick = { request("/runtime/logs/clear", "POST", "{}") }, enabled = !busy) { Text("Clear logs") }
+    }
+   }
    "Diagnostics" -> {
     Text("Runtime diagnostics", style = MaterialTheme.typography.titleLarge)
     Button(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Run diagnostics") }
