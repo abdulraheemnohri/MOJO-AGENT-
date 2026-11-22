@@ -52,6 +52,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
  var memoryText by remember { mutableStateOf("") }
  var workflowName by remember { mutableStateOf("Mobile workflow") }
  var workflowText by remember { mutableStateOf("Hello from MOJO AGENT") }
+ var nodeText by remember { mutableStateOf("New concept") }
  var theme by remember { mutableStateOf("dark") }
  var output by remember { mutableStateOf("Connect to your local MOJO AGENT service.") }
  var busy by remember { mutableStateOf(false) }
@@ -63,8 +64,8 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
   Text("MOJO AGENT", style = MaterialTheme.typography.headlineMedium)
   Text("Algorithmic intelligence · local-first · no LLM required")
   OutlinedTextField(base, { base = it }, label = { Text("Local API base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-  Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-   listOf("Home", "Planner", "Memory", "Workflows", "Settings").forEach { item ->
+  Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+   listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Settings").forEach { item ->
     FilterChip(selected = tab == item, onClick = { tab = item }, label = { Text(item) })
    }
   }
@@ -102,6 +103,37 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit) {
      }, enabled = !busy && workflowName.isNotBlank() && workflowText.isNotBlank()) { Text("Create") }
      OutlinedButton(onClick = { request("/workflows") }, enabled = !busy) { Text("List workflows") }
     }
+   }
+   "Evolution" -> {
+    Text("Evolution laboratory", style = MaterialTheme.typography.titleLarge)
+    Text("Bounded strategy optimization. Candidate activation requires validation and explicit approval.")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/evolution/status") }, enabled = !busy) { Text("Status") }
+     OutlinedButton(onClick = { request("/evolution/experiment", "POST", "{}") }, enabled = !busy) { Text("Run experiment") }
+    }
+    OutlinedButton(onClick = { request("/evolution/status") }, enabled = !busy) { Text("Refresh candidates") }
+   }
+   "Knowledge" -> {
+    Text("Knowledge graph", style = MaterialTheme.typography.titleLarge)
+    OutlinedTextField(nodeText, { nodeText = it }, label = { Text("Concept label") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/knowledge/nodes", "POST", JSONObject().put("label", nodeText).put("kind", "concept").toString()) }, enabled = !busy && nodeText.isNotBlank()) { Text("Add concept") }
+     OutlinedButton(onClick = { request("/knowledge") }, enabled = !busy) { Text("Refresh graph") }
+    }
+   }
+   "Tools" -> {
+    Text("Allowlisted tools", style = MaterialTheme.typography.titleLarge)
+    Button(onClick = { request("/tools") }, enabled = !busy) { Text("Load available tools") }
+    Text("Tool execution requires explicit approval. Shell commands are not available.")
+   }
+   "Analytics" -> {
+    Text("Runtime analytics", style = MaterialTheme.typography.titleLarge)
+    Button(onClick = { request("/analytics?limit=50") }, enabled = !busy) { Text("Refresh analytics") }
+   }
+   "Security" -> {
+    Text("Security status", style = MaterialTheme.typography.titleLarge)
+    Button(onClick = { request("/security/status") }, enabled = !busy) { Text("Inspect security controls") }
+    Text("The server remains loopback-only. Remote access is not configured.")
    }
    "Settings" -> {
     Text("Runtime settings", style = MaterialTheme.typography.titleLarge)
