@@ -142,11 +142,11 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var output by remember { mutableStateOf("Connect to your local MOJO AGENT service.") }
  var runtimeSummary by remember { mutableStateOf("Runtime metrics not loaded yet.") }
  var compactMode by remember { mutableStateOf(false) }
- var showAdvanced by remember { mutableStateOf(false) }
+ var showAdvanced by remember { mutableStateOf(false) }\n var agentMode by remember { mutableStateOf("algorithms") }\n var modelPath by remember { mutableStateOf("") }\n var modelApproval by remember { mutableStateOf(false) }\n var githubRepo by remember { mutableStateOf("") }\n var githubRef by remember { mutableStateOf("main") }\n var manifestPath by remember { mutableStateOf("mojo-extension.json") }\n var extensionPreviewed by remember { mutableStateOf(false) }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
- val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Runtime Logs", "Backend Control", "Settings")
+ val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Runtime Logs", "Runtime & Models", "Extensions Hub", "Backend Control", "Settings")
  val compactNavigation = screenWidthDp < 600
  val bottomTabs = listOf("Home", "Planner", "Workflows", "Settings")
  fun request(path: String, method: String = "GET", json: String? = null) {
@@ -306,6 +306,34 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
     Text("Allowlisted tools", style = MaterialTheme.typography.titleLarge)
     Button(onClick = { request("/tools") }, enabled = !busy) { Text("Load available tools") }
     Text("Tool execution requires explicit approval. Shell commands are not available.")
+   }
+   "Runtime & Models" -> {
+    Text("Agent runtime", style = MaterialTheme.typography.titleLarge)
+    Text("Algorithms are always available. Local LiteRT-LM is optional and disabled until configured.")
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+     listOf("algorithms", "hybrid", "litertlm").forEach { mode -> FilterChip(selected = agentMode == mode, onClick = { agentMode = mode }, label = { Text(mode) }) }
+    }
+    OutlinedTextField(modelPath, { modelPath = it }, label = { Text("Local .litertlm path or Hugging Face owner/model") }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve local inference", Modifier.weight(1f)); Switch(checked = modelApproval, onCheckedChange = { modelApproval = it }) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/settings", "PATCH", JSONObject().put("runtime_mode", agentMode).put("litertlm_enabled", true).put("litertlm_model", modelPath).put("litertlm_backend", "cpu").put("litertlm_timeout_seconds", 120).toString()) }, enabled = !busy) { Text("Save runtime config") }
+     OutlinedButton(onClick = { request("/agent/runtime") }, enabled = !busy) { Text("Runtime status") }
+    }
+    Button(onClick = { request("/agent/run", "POST", JSONObject().put("goal", goal).put("mode", agentMode).put("model", modelPath).put("backend", "cpu").put("approved", modelApproval).toString()) }, enabled = !busy && goal.isNotBlank() && (agentMode == "algorithms" || (modelPath.isNotBlank() && modelApproval)), modifier = Modifier.fillMaxWidth()) { Text("Run agent") }
+    Text("Hybrid mode uses the deterministic plan as authority. Model output is advisory and cannot execute tools. Model inference requires explicit approval.", style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { request("/litertlm/status") }, enabled = !busy) { Text("LiteRT-LM runtime status") }
+   }
+   "Extensions Hub" -> {
+    Text("GitHub skills and tools", style = MaterialTheme.typography.titleLarge)
+    Text("Only declarative JSON manifests are installed. Repository code and shell scripts are never executed.")
+    OutlinedTextField(githubRepo, { githubRepo = it }, label = { Text("GitHub repository owner/name") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(githubRef, { githubRef = it }, label = { Text("Branch or tag") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(manifestPath, { manifestPath = it; extensionPreviewed = false }, label = { Text("Manifest path") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { extensionPreviewed = true; request("/extensions/github/preview", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).toString()) }, enabled = !busy && githubRepo.contains("/")) { Text("Preview") }
+     Button(onClick = { request("/extensions/github/install", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).toString()); extensionPreviewed = false }, enabled = !busy && extensionPreviewed) { Text("Install") }
+    }
+    OutlinedButton(onClick = { request("/extensions") }, enabled = !busy) { Text("List installed extensions") }
    }
    "Runtime Logs" -> {
     Text("Runtime event log", style = MaterialTheme.typography.titleLarge)
