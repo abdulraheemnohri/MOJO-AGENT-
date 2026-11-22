@@ -107,6 +107,11 @@ def validate_settings(req:SettingsInput):
  if unsupported: raise HTTPException(400,'These settings require a service restart or are not remotely editable: '+', '.join(sorted(unsupported)))
  if values.get('theme') not in (None,'dark','light','system'): raise HTTPException(400,'theme must be dark, light or system')
  if values.get('tool_approval_required') is False: raise HTTPException(400,'Tool approval is mandatory and cannot be disabled')
+ if values.get('runtime_mode') not in (None,'algorithms','hybrid','litertlm'):raise HTTPException(400,'runtime_mode must be algorithms, hybrid or litertlm')
+ if values.get('litertlm_backend') not in (None,'cpu','gpu'):raise HTTPException(400,'litertlm_backend must be cpu or gpu')
+ if values.get('litertlm_enabled') not in (None,True,False):raise HTTPException(400,'litertlm_enabled must be boolean')
+ if values.get('litertlm_timeout_seconds') is not None and not 10<=values['litertlm_timeout_seconds']<=180:raise HTTPException(400,'litertlm_timeout_seconds must be 10-180')
+ if values.get('runtime_mode') in ('hybrid','litertlm') and values.get('litertlm_enabled') is False:raise HTTPException(400,'Hybrid and LiteRT-LM modes require the optional runtime enabled')
  if values.get('tool_approval_required') not in (None,True): raise HTTPException(400,'tool_approval_required must be boolean')
  return {'valid':True,'accepted_fields':sorted(values),'restart_required':False,'protected_invariants':{'tool_approval_required':True,'llm_enabled':False,'source_self_modification':False}}
 def _discover_ipv4_addresses():
@@ -319,7 +324,7 @@ def litertlm_run(req:AgentRunInput):
  prefs=settings.get()
  if not prefs['litertlm_enabled']:raise HTTPException(400,'LiteRT-LM is disabled in settings')
  if not req.model and not prefs['litertlm_model']:raise HTTPException(400,'Configure a local model or Hugging Face model id first')
- try:return agent_runtime.model_runtime.run(req.model or prefs['litertlm_model'],req.goal,backend=req.backend or prefs['litertlm_backend'],approved=req.approved)
+ try:\n  agent_runtime.model_runtime.timeout_seconds=prefs['litertlm_timeout_seconds']\n  return agent_runtime.model_runtime.run(req.model or prefs['litertlm_model'],req.goal,backend=req.backend or prefs['litertlm_backend'],approved=req.approved)
  except PermissionError as exc:raise HTTPException(403,str(exc))
  except (ValueError,LiteRTLMError) as exc:raise HTTPException(400,str(exc))
 
@@ -350,3 +355,4 @@ def execute_installed_tool(name:str,req:InstalledToolInput):
  except PermissionError as exc:raise HTTPException(403,str(exc))
  except KeyError as exc:raise HTTPException(404,str(exc))
  except ExtensionError as exc:raise HTTPException(400,str(exc))
+\n@app.post('/api/v1/skills/{name}/run')\ndef run_installed_skill(name:str,req:Goal):\n try:manifest=extensions.get_manifest('skill',name)\n except KeyError:raise HTTPException(404,'Skill not installed')\n tasks=decompose_goal(req.goal);order=topological_order({task['id']:task['depends_on'] for task in tasks})\n return {'skill':name,'instructions':manifest['instructions'],'allowed_tools':manifest.get('tools',[]),'goal':req.goal,'algorithm_plan':{'tasks':tasks,'execution_order':order},'execution':'instructions and plan only; tools are not auto-executed'}\n
