@@ -1,11 +1,12 @@
 """Deterministic graph, text and learning algorithms."""
 from collections import deque
-from heapq import heappush, heappop
+from heapq import heappush,heappop
+from itertools import count
 from math import sqrt
-from typing import Callable, Hashable, Iterable, TypeVar
+from typing import Callable,Hashable,Iterable,TypeVar
 T=TypeVar('T',bound=Hashable)
 def bfs(graph:dict[T,list[T]],start:T,goal:T):
- q=deque([start]); parent={start:None}
+ q=deque([start]);parent={start:None}
  while q:
   n=q.popleft()
   if n==goal:
@@ -27,9 +28,9 @@ def dfs(graph:dict[T,list[T]],start:T,goal:T):
    if x not in parent:parent[x]=n;stack.append(x)
  return None
 def dijkstra(graph:dict[T,list[tuple[T,float]]],start:T,goal:T):
- dist={start:0.0};parent={start:None};heap=[(0.0,start)]
+ seq=count();dist={start:0.0};parent={start:None};heap=[(0.0,next(seq),start)]
  while heap:
-  cost,n=heappop(heap)
+  cost,_,n=heappop(heap)
   if cost!=dist.get(n):continue
   if n==goal:
    p=[]
@@ -38,12 +39,12 @@ def dijkstra(graph:dict[T,list[tuple[T,float]]],start:T,goal:T):
   for x,w in graph.get(n,[]):
    if w<0:raise ValueError('negative edge weight')
    c=cost+w
-   if c<dist.get(x,float('inf')):dist[x]=c;parent[x]=n;heappush(heap,(c,x))
+   if c<dist.get(x,float('inf')):dist[x]=c;parent[x]=n;heappush(heap,(c,next(seq),x))
  return None
 def astar(start:T,goal:T,neighbors:Callable[[T],Iterable[tuple[T,float]]],heuristic:Callable[[T,T],float]):
- heap=[(heuristic(start,goal),0.0,start)];parent={start:None};costs={start:0.0}
+ seq=count();heap=[(heuristic(start,goal),0.0,next(seq),start)];parent={start:None};costs={start:0.0}
  while heap:
-  _,cost,n=heappop(heap)
+  _,cost,_,n=heappop(heap)
   if cost!=costs.get(n):continue
   if n==goal:
    p=[]
@@ -52,14 +53,12 @@ def astar(start:T,goal:T,neighbors:Callable[[T],Iterable[tuple[T,float]]],heuris
   for x,w in neighbors(n):
    if w<0:raise ValueError('negative edge weight')
    c=cost+w
-   if c<costs.get(x,float('inf')):costs[x]=c;parent[x]=n;heappush(heap,(c+heuristic(x,goal),c,x))
+   if c<costs.get(x,float('inf')):costs[x]=c;parent[x]=n;heappush(heap,(c+heuristic(x,goal),c,next(seq),x))
  return None
 def tfidf(documents:list[str]):
  import math,re
- docs=[re.findall(r'[\\w]+',d.lower()) for d in documents]; vocab={t for d in docs for t in d};n=len(docs)
- df={t:sum(t in d for d in docs) for t in vocab};out=[]
- for d in docs:
-  out.append({t:(d.count(t)/max(1,len(d)))*(math.log((1+n)/(1+df[t]))+1) for t in set(d)})
+ docs=[re.findall(r'\w+',d.lower()) for d in documents];vocab={t for d in docs for t in d};n=len(docs);df={t:sum(t in d for d in docs) for t in vocab};out=[]
+ for d in docs:out.append({t:(d.count(t)/max(1,len(d)))*(math.log((1+n)/(1+df[t]))+1) for t in set(d)})
  return out
 def cosine_similarity(a:dict[str,float],b:dict[str,float]):
  dot=sum(v*b.get(k,0) for k,v in a.items());na=sqrt(sum(v*v for v in a.values()));nb=sqrt(sum(v*v for v in b.values()))
