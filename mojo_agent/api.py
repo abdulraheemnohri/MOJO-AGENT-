@@ -3,6 +3,7 @@ from pydantic import BaseModel,Field
 from .algorithms import q_update
 from .planner import decompose_goal,topological_order
 from .evolution import EvolutionEngine
+from .evolution_store import EvolutionStore
 from .memory import MemoryStore
 from .tools import ToolRegistry
 from .workflows import WorkflowStore
@@ -11,7 +12,7 @@ from .analytics import Analytics
 from .settings import SettingsStore
 import math,uuid
 app=FastAPI(title='MOJO AGENT API',version='0.4.0',description='Local algorithmic agent runtime; no LLM required.')
-memory=MemoryStore();evolution=EvolutionEngine();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={}
+memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={}
 class Goal(BaseModel):goal:str=Field(min_length=1,max_length=2000)
 class MemoryInput(BaseModel):content:str=Field(min_length=1,max_length=10000);kind:str='episodic';importance:float=Field(default=.5,ge=0,le=1)
 class QInput(BaseModel):q:float;reward:float;next_max:float=0;alpha:float=Field(default=.1,ge=0,le=1);gamma:float=Field(default=.95,ge=0,le=1)
@@ -40,28 +41,30 @@ def search_memory(q:str='',limit:int=20):
  try:return {'items':memory.search(q,limit)}
  except ValueError as e:raise HTTPException(400,str(e))
 @app.get('/api/v1/evolution/status')
-def status():return {'generation':evolution.generation,'population_size':evolution.population_size,'champion':evolution.champion.__dict__,'approval_required':True,'source_mutation':'disabled'}
+def status():return {'generation':evolution.generation,'population_size':evolution.population_size,'champion':evolution.champion.__dict__,'candidates':evolution_store.list_candidates(100),'approval_required':True,'source_mutation':'disabled'}
 @app.post('/api/v1/evolution/experiment')
 def experiment():
  candidates=evolution.evolve(lambda s:1-abs(s.learning_rate-.2)-abs(s.exploration-.1));analytics.record('evolution_experiment')
  payload=[]
  for c in candidates:
-  ident=str(uuid.uuid4());candidate_registry[ident]=c
+  ident=str(uuid.uuid4());candidate_registry[ident]=c;evolution_store.save_candidate(ident,c)
   payload.append({'id':ident,'fitness':c.fitness,'strategy':c.strategy.__dict__,'tests_passed':c.tests_passed,'approved':c.approved})
  return {'generation':evolution.generation,'candidates':payload,'activation':'manual approval required'}
 @app.post('/api/v1/evolution/candidates/{candidate_id}/validate')
 def validate_candidate(candidate_id:str):
- c=candidate_registry.get(candidate_id)
+ c=candidate_registry.get(candidate_id) or evolution_store.get_candidate(candidate_id)
  if not c:raise HTTPException(404,'Candidate not found; run a new experiment')
+ candidate_registry[candidate_id]=c
  try:c.tests_passed=evolution.validate_candidate(c,lambda s: (s.validate() is None and all(math.isfinite(v) for v in (s.learning_rate,s.exploration,s.discount))))
  except (ValueError,TypeError):c.tests_passed=False
+ evolution_store.save_candidate(candidate_id,c)
  analytics.record('candidate_validated',{'passed':c.tests_passed})
  return {'id':candidate_id,'tests_passed':c.tests_passed,'activation':'not activated'}
 @app.post('/api/v1/evolution/candidates/{candidate_id}/approve')
 def approve_candidate(candidate_id:str,req:ApprovalInput):
  c=candidate_registry.get(candidate_id)
  if not c:raise HTTPException(404,'Candidate not found; run a new experiment')
- try:evolution.approve_candidate(c,req.approved);analytics.record('candidate_approved');return {'id':candidate_id,'approved':True,'champion':evolution.champion.__dict__}
+ try:evolution.approve_candidate(c,req.approved);evolution_store.save_candidate(candidate_id,c);evolution_store.set_champion(evolution.champion);analytics.record('candidate_approved');return {'id':candidate_id,'approved':True,'champion':evolution.champion.__dict__}
  except (ValueError,PermissionError) as e:raise HTTPException(400,str(e))
 @app.get('/api/v1/tools')
 def list_tools():return {'tools':tools.list_tools()}
@@ -72,6 +75,10 @@ def execute_tool(req:ToolInput):
  except (ValueError,KeyError) as e:raise HTTPException(400,str(e))
 @app.get('/api/v1/workflows')
 def list_workflows():return {'items':workflows.list(),'history':workflows.history()}
+@app.get('/api/v1/workflows/{workflow_id}/history')
+def workflow_history(workflow_id:str,limit:int=50):
+ if not workflows.get(workflow_id):raise HTTPException(404,'Workflow not found')
+ return {'items':workflows.history(limit,workflow_id)}
 @app.post('/api/v1/workflows')
 def create_workflow(req:WorkflowInput):
  try:
@@ -190,6 +197,3 @@ def import_memory(req: MemoryImport):
     analytics.record('memory_imported', {'count': added})
     return {'imported': added}
 
-@app.get('/api/v1/memory/export')
-def export_memory():
-    return {'format': 'mojo-memory-v1', 'items': memory.export_all()}
