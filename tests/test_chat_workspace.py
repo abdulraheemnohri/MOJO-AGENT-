@@ -109,3 +109,20 @@ def test_chat_skill_plan_is_recorded_without_executing_tools(tmp_path, monkeypat
         assert response.json()["message"]["role"] == "tool"
     finally:
         monkeypatch.setattr(api, "extensions", original)
+
+def test_chat_export_and_clear_remove_messages_and_attachments(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    conversation = client.post("/api/v1/chat/conversations", json={}).json()
+    conversation_id = conversation["id"]
+    client.post(f"/api/v1/chat/conversations/{conversation_id}/send", json={"content":"Keep this locally"})
+    upload = client.post(f"/api/v1/chat/conversations/{conversation_id}/attachments?filename=keep.txt",
+                         content=b"attachment", headers={"content-type":"text/plain"})
+    assert upload.status_code == 200
+    exported = client.get(f"/api/v1/chat/conversations/{conversation_id}/export")
+    assert exported.status_code == 200
+    assert exported.json()["format"] == "mojo-chat-v1"
+    assert len(exported.json()["messages"]) == 2
+    cleared = client.delete(f"/api/v1/chat/conversations/{conversation_id}/messages")
+    assert cleared.status_code == 200
+    assert client.get(f"/api/v1/chat/conversations/{conversation_id}/messages").json()["items"] == []
+    assert client.get(f"/api/v1/chat/conversations/{conversation_id}/attachments").json()["items"] == []
