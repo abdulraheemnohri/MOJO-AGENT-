@@ -41,12 +41,12 @@ class SettingsStore:
 
  def auth_status(self):
   current=self._get_raw()
-  return {'enabled':bool(current.get('api_auth_enabled',False)),'configured':bool(current.get('api_auth_hash') and current.get('api_auth_salt')),'algorithm':'PBKDF2-HMAC-SHA256'}
+  return {'enabled':bool(current.get('api_auth_enabled',False)),'configured':bool(current.get('api_auth_hash') and current.get('api_auth_salt')),'algorithm':'SHA-256 salted high-entropy token'}
 
  def create_api_token(self):
   token=secrets.token_urlsafe(40)
   salt=secrets.token_bytes(16)
-  digest=hashlib.pbkdf2_hmac('sha256',token.encode(),salt,310000)
+  digest=hashlib.sha256(salt+token.encode()).digest()
   with self.db() as c:
    c.executemany('INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',[
     ('api_auth_salt',json.dumps(salt.hex())),('api_auth_hash',json.dumps(digest.hex())),('api_auth_enabled','true')])
@@ -64,6 +64,6 @@ class SettingsStore:
   if not current.get('api_auth_enabled'):return True
   salt=current.get('api_auth_salt');expected=current.get('api_auth_hash')
   if not salt or not expected:return False
-  try:actual=hashlib.pbkdf2_hmac('sha256',token.encode(),bytes.fromhex(salt),310000).hex()
+  try:actual=hashlib.sha256(bytes.fromhex(salt)+token.encode()).hexdigest()
   except (ValueError,TypeError):return False
   return hmac.compare_digest(actual,expected)
