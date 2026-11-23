@@ -349,6 +349,19 @@ def send_chat_message(conversation_id:str,req:ChatSendInput):
  except HTTPException:raise
  except (ValueError,KeyError) as exc:raise HTTPException(400,str(exc))
 
+@app.post('/api/v1/chat/conversations/{conversation_id}/skills/{name}/plan')
+def plan_chat_skill(conversation_id:str,name:str,req:Goal):
+ if not chat_store.get(conversation_id):raise HTTPException(404,'Conversation not found')
+ try:
+  manifest=extensions.get_manifest('skill',name)
+  tasks=decompose_goal(req.goal)
+  order=topological_order({task['id']:task['depends_on'] for task in tasks})
+  result={'skill':name,'instructions':manifest['instructions'],'allowed_tools':manifest.get('tools',[]),'goal':req.goal,'algorithm_plan':{'tasks':tasks,'execution_order':order},'execution':'plan only; no tools were executed'}
+  message=chat_store.add_message(conversation_id,'tool',json.dumps(result,ensure_ascii=False),{'kind':'skill_plan','skill':name,'approval_required_for_execution':True})
+  return {'plan':result,'message':message}
+ except KeyError:raise HTTPException(404,'Skill not installed')
+ except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
+
 @app.post('/api/v1/chat/conversations/{conversation_id}/tools/execute')
 def execute_chat_tool(conversation_id:str,req:ChatToolInput):
  if not chat_store.get(conversation_id):raise HTTPException(404,'Conversation not found')
