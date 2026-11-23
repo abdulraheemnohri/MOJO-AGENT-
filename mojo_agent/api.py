@@ -123,20 +123,30 @@ def _require_loopback(request:Request):
  except ValueError:raise HTTPException(403,'Database maintenance is available only to loopback clients')
  if not peer.is_loopback:raise HTTPException(403,'Database maintenance is restricted to loopback clients')
 
+async def _read_limited_body(request:Request, max_bytes:int=128*1024*1024):
+ declared=request.headers.get('content-length')
+ if declared:
+  try:size=int(declared)
+  except ValueError:raise HTTPException(400,'Invalid Content-Length header')
+  if size<0 or size>max_bytes:raise HTTPException(413,'Backup exceeds the 128 MiB restore limit')
+ chunks=[];total=0
+ async for chunk in request.stream():
+  total+=len(chunk)
+  if total>max_bytes:raise HTTPException(413,'Backup exceeds the 128 MiB restore limit')
+  chunks.append(chunk)
+ return b''.join(chunks)
+
 @app.post('/api/v1/backup/inspect')
 async def inspect_database_backup(request:Request):
  _require_loopback(request)
- payload=await request.body()
+ payload=await _read_limited_body(request)
  try:return database.inspect_payload(payload)
  except ValueError as exc:raise HTTPException(400,str(exc))
 
 @app.post('/api/v1/backup/restore')
 async def restore_database_backup(request:Request):
  _require_loopback(request)
- declared=request.headers.get('content-length')
- if declared and int(declared)>128*1024*1024:raise HTTPException(413,'Backup exceeds the 128 MiB restore limit')
- payload=await request.body()
- if len(payload)>128*1024*1024:raise HTTPException(413,'Backup exceeds the 128 MiB restore limit')
+ payload=await _read_limited_body(request)
  try:
   result=database.restore_payload(payload,request.headers.get('x-backup-sha256'))
   _record_runtime_log('WARNING','Database restored from verified local backup')
