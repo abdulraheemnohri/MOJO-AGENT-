@@ -18,7 +18,7 @@ from .agent_runtime import AgentRuntime
 from .litertlm import LiteRTLM, LiteRTLMError
 from .database import DatabaseManager
 from .chat import ChatStore, MAX_ATTACHMENT_BYTES
-import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress,secrets
+import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress,secrets,json
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type','Authorization','X-Backup-SHA256'])
 memory=MemoryStore();database=DatabaseManager(str(memory.path));database.migrate();chat_store=ChatStore(str(memory.path));evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));litertlm=agent_runtime.model_runtime;candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
@@ -218,7 +218,7 @@ def select_chat_model(catalog_id:str):
  if not item:raise HTTPException(404,'Chat model not found')
  try:
   LiteRTLM.validate_model(item['model_id'])
-  settings.update({'litertlm_model':item['model_id']})
+  settings.update({'litertlm_model':item['model_id'],'litertlm_backend':item['backend']})
   return {'selected':True,'model':item,'runtime_enabled':settings.get()['litertlm_enabled']}
  except ValueError as exc:raise HTTPException(400,str(exc))
 
