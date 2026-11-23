@@ -16,9 +16,9 @@ from .extensions import GitHubExtensionRegistry, ExtensionError
 from .agent_runtime import AgentRuntime
 from .litertlm import LiteRTLM, LiteRTLMError
 from .database import DatabaseManager
-import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress
+import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress,secrets
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
-app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type','X-Backup-SHA256'])
+app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type','Authorization','X-Backup-SHA256'])
 memory=MemoryStore();database=DatabaseManager(str(memory.path));database.migrate();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
 WORKER_STOP=threading.Event()
 WORKER_THREAD=None
@@ -74,6 +74,44 @@ class GitHubExtensionInput(BaseModel):repository:str=Field(min_length=3,max_leng
 class GitHubInstallInput(GitHubExtensionInput):expected_sha256:str=Field(min_length=64,max_length=64)
 class InstalledToolInput(BaseModel):arguments:dict={};approved:bool=False
 class SkillExecutionInput(BaseModel):operation:str=Field(min_length=1,max_length=40);arguments:dict={};approved:bool=False
+AUTH_EXEMPT_PATHS={'/api/v1/health','/api/v1/security/status','/api/v1/security/token/bootstrap'}
+
+def _request_is_loopback(request):
+ try:return ipaddress.ip_address(request.client.host).is_loopback
+ except (ValueError,AttributeError):return False
+
+@app.middleware("http")
+async def enforce_api_token(request,call_next):
+ path=request.url.path
+ if path.startswith('/api/v1/') and path not in AUTH_EXEMPT_PATHS and settings.auth_status()['enabled']:
+  header=request.headers.get('authorization','')
+  token=header[7:].strip() if header.lower().startswith('bearer ') else ''
+  if not settings.verify_api_token(token):
+   return Response(content='{"detail":"A valid MOJO API bearer token is required"}',status_code=401,media_type='application/json',headers={'WWW-Authenticate':'Bearer'})
+ return await call_next(request)
+
+@app.post('/api/v1/security/token/bootstrap')
+def bootstrap_api_token(request:Request):
+ if not _request_is_loopback(request):raise HTTPException(403,'Initial API token setup is restricted to loopback clients')
+ if settings.auth_status()['enabled']:raise HTTPException(409,'API authentication is already enabled; use an authenticated token rotation')
+ token=settings.create_api_token()
+ _record_runtime_log('WARNING','Local API token created')
+ return {'token':token,'warning':'Copy this token now. It is shown only once; MOJO stores only a salted PBKDF2 hash.'}
+
+@app.post('/api/v1/security/token/rotate')
+def rotate_api_token(request:Request):
+ if not _request_is_loopback(request):raise HTTPException(403,'API token rotation is restricted to loopback clients')
+ token=settings.create_api_token()
+ _record_runtime_log('WARNING','Local API token rotated')
+ return {'token':token,'warning':'The previous token is invalid. Copy this token now; it is shown only once.'}
+
+@app.delete('/api/v1/security/token')
+def revoke_api_token(request:Request):
+ if not _request_is_loopback(request):raise HTTPException(403,'API token revocation is restricted to loopback clients')
+ result=settings.revoke_api_token()
+ _record_runtime_log('WARNING','Local API token revoked')
+ return result
+
 @app.middleware("http")
 async def collect_safe_analytics(request, call_next):
  started=time.perf_counter()
@@ -361,7 +399,7 @@ def diagnostics():
  graph_snapshot=knowledge.snapshot()
  return {'status':'ok','python':platform.python_version(),'platform':platform.platform(),'runtime':'python-reference','runtime_mode':settings.get()['runtime_mode'],'llm_enabled':False,'litertlm':agent_runtime.model_runtime.status(),'database':'sqlite','modules':{'memory_records':len(memory.search('',200)),'workflows':len(workflows.list()),'knowledge_nodes':len(graph_snapshot['nodes']),'knowledge_edges':len(graph_snapshot['edges']),'evolution_candidates':len(evolution_store.list_candidates(500)),'installed_extensions':len(extensions.list())},'limits':{'memory_search':200,'workflow_steps':50,'analytics_retention':analytics.retention},'safety':{'tool_approval_required':True,'shell_execution':False,'source_self_modification':False,'github_extension_code_execution':False}}
 @app.get('/api/v1/security/status')
-def security_status():return {'mode':'local-only','tool_allowlist':tools.list_tools(),'approval_required':settings.get()['tool_approval_required'],'shell_execution':False,'source_self_modification':False,'remote_access':'not configured'}
+def security_status():return {'mode':'local-first','tool_allowlist':tools.list_tools(),'approval_required':settings.get()['tool_approval_required'],'api_auth':settings.auth_status(),'shell_execution':False,'source_self_modification':False,'remote_access':'LAN access requires token authentication; use HTTPS termination before exposing beyond trusted networks'}
 @app.get('/api/v1/settings')
 def get_settings():return settings.get()
 @app.patch('/api/v1/settings')
