@@ -344,10 +344,10 @@ def send_chat_message(conversation_id:str,req:ChatSendInput):
      transcript.append(message['role'].upper()+': '+message['content'])
    for attachment in attachment_context:
     if attachment['extracted_text']:transcript.append('ATTACHMENT '+attachment['filename']+': '+attachment['extracted_text'])
-   transcript_text='\\n'.join(transcript)
+   transcript_text='\n'.join(transcript)
    available_context=max(500,5900-len(system_prompt)-40)
    transcript_text=transcript_text[-available_context:]
-   prompt=system_prompt[:2000]+'\\n\\nConversation:\\n'+transcript_text+'\\nASSISTANT:'
+   prompt=system_prompt[:2000]+'\n\nConversation:\n'+transcript_text+'\nASSISTANT:'
    try:
     result=agent_runtime.model_runtime.run(model,prompt,backend=req.backend or prefs.get('litertlm_backend','cpu'),approved=True)
    except (LiteRTLMError,ValueError,OSError) as exc:raise HTTPException(503,'Local model request failed: '+str(exc)[:300])
