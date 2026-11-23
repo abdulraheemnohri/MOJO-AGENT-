@@ -193,7 +193,7 @@ def chat_models():
    _,is_hf=LiteRTLM.validate_model(item['model_id'])
    available=bool(runtime.get('huggingface_repo_cli_available') if is_hf else runtime.get('local_model_cli_available'))
   except ValueError:available=False
-  items.append({**item,'id':item['model_id'],'name':item['label'],'provider':'litertlm','mode':'litertlm','available':available,'requires_approval':True})
+  items.append({**item,'catalog_id':item['id'],'id':item['model_id'],'name':item['label'],'provider':'litertlm','mode':'litertlm','available':available,'requires_approval':True})
  if configured and not any(item.get('model_id')==configured for item in saved):
   try:
    _,is_hf=LiteRTLM.validate_model(configured)
