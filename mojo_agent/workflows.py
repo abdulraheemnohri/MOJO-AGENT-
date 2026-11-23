@@ -154,6 +154,11 @@ class WorkflowStore:
    query+=" ORDER BY created DESC LIMIT ?";args.append(limit)
    rows=c.execute(query,args).fetchall()
   return [self._job_row(row) for row in rows]
+ def job_counts(self):
+  with self.db() as c:rows=c.execute("SELECT status,COUNT(*) FROM workflow_jobs GROUP BY status").fetchall()
+  counts={status:0 for status in ("queued","running","completed","failed","cancelled")}
+  counts.update({status:count for status,count in rows})
+  return counts
  def cancel_job(self,job_id):
   with self.db() as c:
    row=c.execute("SELECT status FROM workflow_jobs WHERE id=?",(job_id,)).fetchone()
