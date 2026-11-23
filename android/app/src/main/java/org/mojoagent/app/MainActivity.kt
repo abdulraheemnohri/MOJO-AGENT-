@@ -162,6 +162,11 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var skillOperation by remember { mutableStateOf("text_stats") }
  var skillInput by remember { mutableStateOf("") }
  var skillApproval by remember { mutableStateOf(false) }
+ var workerEnabled by remember { mutableStateOf(false) }
+ var workerPoll by remember { mutableStateOf("2") }
+ var workerBatch by remember { mutableStateOf("3") }
+ var jobId by remember { mutableStateOf("") }
+ var maxAttempts by remember { mutableStateOf("3") }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
@@ -280,6 +285,28 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
      }, enabled = !busy && workflowName.isNotBlank() && workflowText.isNotBlank()) { Text("Create") }
      OutlinedButton(onClick = { request("/workflows") }, enabled = !busy) { Text("List workflows") }
     }
+    Text("Durable job queue", style = MaterialTheme.typography.titleMedium)
+    OutlinedTextField(scheduleWorkflowId, { scheduleWorkflowId = it }, label = { Text("Workflow ID to enqueue / schedule") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(maxAttempts, { maxAttempts = it.filter(Char::isDigit).take(2) }, label = { Text("Maximum retry attempts (1–10)") }, modifier = Modifier.fillMaxWidth())
+    Button(onClick = { request("/workflows/$scheduleWorkflowId/enqueue", "POST", JSONObject().put("max_attempts", maxAttempts.toIntOrNull() ?: 3).toString()) }, enabled = !busy && scheduleWorkflowId.isNotBlank() && (maxAttempts.toIntOrNull() ?: 0) in 1..10) { Text("Enqueue workflow") }
+    OutlinedTextField(jobId, { jobId = it }, label = { Text("Job ID for cancel / retry") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { request("/workflow-jobs?limit=100") }, enabled = !busy) { Text("List jobs") }
+     Button(onClick = { request("/worker/tick", "POST", JSONObject().put("limit", workerBatch.toIntOrNull() ?: 3).put("worker_id", "android-manual").toString()) }, enabled = !busy) { Text("Process queue") }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { request("/workflow-jobs/$jobId/cancel", "POST", "{}") }, enabled = !busy && jobId.isNotBlank()) { Text("Cancel job") }
+     OutlinedButton(onClick = { request("/workflow-jobs/$jobId/retry", "POST", "{}") }, enabled = !busy && jobId.isNotBlank()) { Text("Retry job") }
+    }
+    Text("Background worker settings", style = MaterialTheme.typography.titleMedium)
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Automatic processing", Modifier.weight(1f)); Switch(checked = workerEnabled, onCheckedChange = { workerEnabled = it }) }
+    OutlinedTextField(workerPoll, { workerPoll = it.filter(Char::isDigit).take(2) }, label = { Text("Poll seconds (1–60)") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(workerBatch, { workerBatch = it.filter(Char::isDigit).take(2) }, label = { Text("Batch size (1–10)") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/settings", "PATCH", JSONObject().put("worker_enabled", workerEnabled).put("worker_poll_seconds", workerPoll.toIntOrNull() ?: 2).put("worker_batch_size", workerBatch.toIntOrNull() ?: 3).put("workflow_max_attempts", maxAttempts.toIntOrNull() ?: 3).toString()) }, enabled = !busy && (workerPoll.toIntOrNull() ?: 0) in 1..60 && (workerBatch.toIntOrNull() ?: 0) in 1..10) { Text("Save worker settings") }
+     OutlinedButton(onClick = { request("/worker/status") }, enabled = !busy) { Text("Worker status") }
+    }
+    Text("Worker runs inside the backend and resumes queued jobs after restart. Use database backup before restoring or migrating production data.")
     Text("Persistent scheduler", style = MaterialTheme.typography.titleMedium)
     OutlinedTextField(scheduleWorkflowId, { scheduleWorkflowId = it }, label = { Text("Workflow ID") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(scheduleSeconds, { scheduleSeconds = it.filter(Char::isDigit).take(8) }, label = { Text("Interval seconds (60–2592000)") }, modifier = Modifier.fillMaxWidth())
