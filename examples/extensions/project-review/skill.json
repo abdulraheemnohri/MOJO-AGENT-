@@ -1,0 +1,9 @@
+{
+  "schema": "mojo.extension.v1",
+  "kind": "skill",
+  "name": "project-review",
+  "version": "1.0.0",
+  "description": "Review a project brief and identify missing implementation work",
+  "instructions": "Review the supplied project context. Identify architectural risks, missing tests, security gaps and a prioritized implementation plan. Do not claim that any unverified action was completed.",
+  "tools": ["text_stats"]
+}

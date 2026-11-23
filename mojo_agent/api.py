@@ -12,10 +12,13 @@ from .workflows import WorkflowStore
 from .knowledge import KnowledgeGraph
 from .analytics import Analytics
 from .settings import SettingsStore
+from .extensions import GitHubExtensionRegistry, ExtensionError
+from .agent_runtime import AgentRuntime
+from .litertlm import LiteRTLM, LiteRTLMError
 import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
-memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
+memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
 
 def _record_runtime_log(level,message,method=None,path=None,status=None,duration_ms=None):
  entry={'time':time.time(),'level':level,'message':message,'method':method,'path':path,'status':status,'duration_ms':duration_ms}
@@ -32,8 +35,12 @@ class ScheduleEnabledInput(BaseModel):enabled:bool
 class NodeInput(BaseModel):label:str=Field(min_length=1,max_length=300);kind:str='concept';properties:dict={}
 class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weight:float=Field(default=1,ge=0,le=100)
 class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
-class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None
+class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None;runtime_mode:str|None=None;litertlm_enabled:bool|None=None;litertlm_backend:str|None=None;litertlm_timeout_seconds:int|None=Field(default=None,ge=10,le=180);litertlm_model:str|None=None
 class ApprovalInput(BaseModel):approved:bool
+class AgentRunInput(BaseModel):goal:str=Field(min_length=1,max_length=2000);mode:str|None=None;model:str|None=None;backend:str|None=None;approved:bool=False
+class GitHubExtensionInput(BaseModel):repository:str=Field(min_length=3,max_length=205);ref:str='main';manifest_path:str='mojo-extension.json'
+class GitHubInstallInput(GitHubExtensionInput):expected_sha256:str=Field(min_length=64,max_length=64)
+class InstalledToolInput(BaseModel):arguments:dict={};approved:bool=False
 @app.middleware("http")
 async def collect_safe_analytics(request, call_next):
  started=time.perf_counter()
@@ -71,7 +78,7 @@ def runtime_status():
   integrity=conn.execute('PRAGMA quick_check').fetchone()[0]
   table_names={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
   counts={}
-  for table in ('memories','workflows','workflow_runs','workflow_schedules','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates'):
+  for table in ('memories','workflows','workflow_runs','workflow_schedules','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates','installed_extensions'):
    if table in table_names: counts[table]=conn.execute('SELECT COUNT(*) FROM "'+table+'"').fetchone()[0]
  schedules=workflows.list_schedules()
  return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':False,'execution_mode':'manual tick endpoint'},'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
@@ -97,10 +104,15 @@ def export_database_backup(request:Request):
 @app.post('/api/v1/settings/validate')
 def validate_settings(req:SettingsInput):
  values=req.model_dump(exclude_unset=True)
- unsupported=set(values)-{'theme','tool_approval_required'}
+ unsupported=set(values)-{'theme','tool_approval_required','runtime_mode','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds','litertlm_model'}
  if unsupported: raise HTTPException(400,'These settings require a service restart or are not remotely editable: '+', '.join(sorted(unsupported)))
  if values.get('theme') not in (None,'dark','light','system'): raise HTTPException(400,'theme must be dark, light or system')
  if values.get('tool_approval_required') is False: raise HTTPException(400,'Tool approval is mandatory and cannot be disabled')
+ if values.get('runtime_mode') not in (None,'algorithms','hybrid','litertlm'):raise HTTPException(400,'runtime_mode must be algorithms, hybrid or litertlm')
+ if values.get('litertlm_backend') not in (None,'cpu','gpu'):raise HTTPException(400,'litertlm_backend must be cpu or gpu')
+ if values.get('litertlm_enabled') not in (None,True,False):raise HTTPException(400,'litertlm_enabled must be boolean')
+ if values.get('litertlm_timeout_seconds') is not None and not 10<=values['litertlm_timeout_seconds']<=180:raise HTTPException(400,'litertlm_timeout_seconds must be 10-180')
+ if values.get('runtime_mode') in ('hybrid','litertlm') and not values.get('litertlm_enabled',settings.get()['litertlm_enabled']):raise HTTPException(400,'Hybrid and LiteRT-LM modes require the optional runtime enabled')
  if values.get('tool_approval_required') not in (None,True): raise HTTPException(400,'tool_approval_required must be boolean')
  return {'valid':True,'accepted_fields':sorted(values),'restart_required':False,'protected_invariants':{'tool_approval_required':True,'llm_enabled':False,'source_self_modification':False}}
 def _discover_ipv4_addresses():
@@ -234,7 +246,7 @@ def analytics_summary(limit:int=20,event:str|None=None):
 @app.get('/api/v1/diagnostics')
 def diagnostics():
  graph_snapshot=knowledge.snapshot()
- return {'status':'ok','python':platform.python_version(),'platform':platform.platform(),'runtime':'python-reference','llm_enabled':False,'database':'sqlite','modules':{'memory_records':len(memory.search('',200)),'workflows':len(workflows.list()),'knowledge_nodes':len(graph_snapshot['nodes']),'knowledge_edges':len(graph_snapshot['edges']),'evolution_candidates':len(evolution_store.list_candidates(500))},'limits':{'memory_search':200,'workflow_steps':50,'analytics_retention':analytics.retention},'safety':{'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
+ return {'status':'ok','python':platform.python_version(),'platform':platform.platform(),'runtime':'python-reference','runtime_mode':settings.get()['runtime_mode'],'llm_enabled':False,'litertlm':agent_runtime.model_runtime.status(),'database':'sqlite','modules':{'memory_records':len(memory.search('',200)),'workflows':len(workflows.list()),'knowledge_nodes':len(graph_snapshot['nodes']),'knowledge_edges':len(graph_snapshot['edges']),'evolution_candidates':len(evolution_store.list_candidates(500)),'installed_extensions':len(extensions.list())},'limits':{'memory_search':200,'workflow_steps':50,'analytics_retention':analytics.retention},'safety':{'tool_approval_required':True,'shell_execution':False,'source_self_modification':False,'github_extension_code_execution':False}}
 @app.get('/api/v1/security/status')
 def security_status():return {'mode':'local-only','tool_allowlist':tools.list_tools(),'approval_required':settings.get()['tool_approval_required'],'shell_execution':False,'source_self_modification':False,'remote_access':'not configured'}
 @app.get('/api/v1/settings')
@@ -286,3 +298,84 @@ def import_memory(req:MemoryImport):
  try:added=memory.import_many(req.items)
  except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
  analytics.record('memory_imported',{'count':added});return {'imported':added}
+
+
+@app.get('/api/v1/agent/runtime')
+def agent_runtime_status():
+ result=agent_runtime.status();prefs=settings.get()
+ result.update({'active_mode':prefs['runtime_mode'],'configured_mode':prefs['runtime_mode'],'litertlm_enabled':prefs['litertlm_enabled'],'configured_model':prefs['litertlm_model'],'configured_backend':prefs['litertlm_backend']})
+ return result
+
+@app.post('/api/v1/agent/run')
+def run_agent(req:AgentRunInput):
+ prefs=settings.get();mode=req.mode or prefs['runtime_mode']
+ if mode in {'hybrid','litertlm'} and not prefs['litertlm_enabled']:raise HTTPException(400,'Optional LiteRT-LM runtime is disabled in settings')
+ model=req.model if req.model is not None else prefs['litertlm_model'];backend=req.backend if req.backend is not None else prefs['litertlm_backend']
+ try:
+  agent_runtime.model_runtime.timeout_seconds=prefs['litertlm_timeout_seconds']
+  result=agent_runtime.run(req.goal,mode,model,backend,req.approved);analytics.record('agent_run',{'mode':mode});return result
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except (ValueError,RuntimeError) as exc:raise HTTPException(400,str(exc))
+
+@app.get('/api/v1/litertlm/status')
+def litertlm_status():
+ status=agent_runtime.model_runtime.status();prefs=settings.get();status.update({'enabled':prefs['litertlm_enabled'],'configured_model':prefs['litertlm_model'],'configured_backend':prefs['litertlm_backend']});return status
+
+@app.post('/api/v1/litertlm/run')
+def litertlm_run(req:AgentRunInput):
+ prefs=settings.get()
+ if not prefs['litertlm_enabled']:raise HTTPException(400,'LiteRT-LM is disabled in settings')
+ if not req.model and not prefs['litertlm_model']:raise HTTPException(400,'Configure a local model or Hugging Face model id first')
+ try:
+  agent_runtime.model_runtime.timeout_seconds=prefs['litertlm_timeout_seconds']
+  return agent_runtime.model_runtime.run(req.model or prefs['litertlm_model'],req.goal,backend=req.backend or prefs['litertlm_backend'],approved=req.approved)
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except (ValueError,LiteRTLMError) as exc:raise HTTPException(400,str(exc))
+
+@app.get('/api/v1/extensions')
+def list_extensions(kind:str|None=None):
+ if kind not in (None,'skill','tool'):raise HTTPException(400,'kind must be skill or tool')
+ return {'items':extensions.list(kind),'code_execution':False,'source':'GitHub declarative manifests'}
+
+@app.post('/api/v1/extensions/github/preview')
+def preview_github_extension(req:GitHubExtensionInput):
+ try:return extensions.preview(req.repository,req.ref,req.manifest_path)
+ except ExtensionError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/v1/extensions/github/install')
+def install_github_extension(req:GitHubInstallInput):
+ try:
+  item=extensions.install(req.repository,req.ref,req.manifest_path,req.expected_sha256);analytics.record('github_extension_installed',{'kind':item['kind'],'name':item['name']});return item
+ except ExtensionError as exc:raise HTTPException(400,str(exc))
+
+@app.delete('/api/v1/extensions/{extension_id}')
+def uninstall_extension(extension_id:str):
+ if not extensions.uninstall(extension_id):raise HTTPException(404,'Installed extension not found')
+ analytics.record('github_extension_removed');return {'removed':True,'id':extension_id}
+
+@app.post('/api/v1/tools/installed/{name}/execute')
+def execute_installed_tool(name:str,req:InstalledToolInput):
+ try:return {'result':extensions.execute_tool(name,req.arguments,req.approved)}
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except KeyError as exc:raise HTTPException(404,str(exc))
+ except ExtensionError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/v1/skills/{name}/run')
+def run_installed_skill(name:str,req:Goal):
+ try:manifest=extensions.get_manifest('skill',name)
+ except KeyError:raise HTTPException(404,'Skill not installed')
+ tasks=decompose_goal(req.goal);order=topological_order({task['id']:task['depends_on'] for task in tasks})
+ return {'skill':name,'instructions':manifest['instructions'],'allowed_tools':manifest.get('tools',[]),'goal':req.goal,'algorithm_plan':{'tasks':tasks,'execution_order':order},'execution':'instructions and plan only; tools are not auto-executed'}
+
+
+@app.post('/api/v1/litertlm/benchmark')
+def litertlm_benchmark(req:AgentRunInput):
+ prefs=settings.get()
+ if not prefs['litertlm_enabled']:raise HTTPException(400,'LiteRT-LM is disabled in settings')
+ model=req.model or prefs['litertlm_model']
+ if not model:raise HTTPException(400,'Configure a local model or Hugging Face model id first')
+ try:
+  agent_runtime.model_runtime.timeout_seconds=prefs['litertlm_timeout_seconds']
+  return agent_runtime.model_runtime.benchmark(model,approved=req.approved)
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except (ValueError,LiteRTLMError) as exc:raise HTTPException(400,str(exc))
