@@ -31,11 +31,11 @@ class MemoryInput(BaseModel):content:str=Field(min_length=1,max_length=10000);ki
 class QInput(BaseModel):q:float;reward:float;next_max:float=0;alpha:float=Field(default=.1,ge=0,le=1);gamma:float=Field(default=.95,ge=0,le=1)
 class WorkflowInput(BaseModel):name:str=Field(min_length=1,max_length=120);steps:list[dict]=Field(min_length=1,max_length=50)
 class ScheduleInput(BaseModel):workflow_id:str;interval_seconds:int=Field(ge=60,le=2592000)
-class ScheduleEnabledInput(BaseModel):enabled:bool
+class ScheduleEnabledInput(BaseModel):enabled:bool\nclass WorkflowEnqueueInput(BaseModel):max_attempts:int=Field(default=3,ge=1,le=10)\nclass WorkerTickInput(BaseModel):limit:int=Field(default=5,ge=1,le=10);worker_id:str=Field(default='manual-worker',min_length=1,max_length=80)
 class NodeInput(BaseModel):label:str=Field(min_length=1,max_length=300);kind:str='concept';properties:dict={}
 class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weight:float=Field(default=1,ge=0,le=100)
 class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
-class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None;runtime_mode:str|None=None;litertlm_enabled:bool|None=None;litertlm_backend:str|None=None;litertlm_timeout_seconds:int|None=Field(default=None,ge=10,le=180);litertlm_model:str|None=None
+class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None;runtime_mode:str|None=None;litertlm_enabled:bool|None=None;litertlm_backend:str|None=None;litertlm_timeout_seconds:int|None=Field(default=None,ge=10,le=180);litertlm_model:str|None=None;worker_enabled:bool|None=None;worker_poll_seconds:int|None=Field(default=None,ge=1,le=60);worker_batch_size:int|None=Field(default=None,ge=1,le=10);workflow_max_attempts:int|None=Field(default=None,ge=1,le=10)
 class ApprovalInput(BaseModel):approved:bool
 class AgentRunInput(BaseModel):goal:str=Field(min_length=1,max_length=2000);mode:str|None=None;model:str|None=None;backend:str|None=None;approved:bool=False
 class GitHubExtensionInput(BaseModel):repository:str=Field(min_length=3,max_length=205);ref:str='main';manifest_path:str='mojo-extension.json'
@@ -105,7 +105,7 @@ def export_database_backup(request:Request):
 @app.post('/api/v1/settings/validate')
 def validate_settings(req:SettingsInput):
  values=req.model_dump(exclude_unset=True)
- unsupported=set(values)-{'theme','tool_approval_required','runtime_mode','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds','litertlm_model'}
+ unsupported=set(values)-{'theme','tool_approval_required','runtime_mode','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds','litertlm_model','worker_enabled','worker_poll_seconds','worker_batch_size','workflow_max_attempts'}
  if unsupported: raise HTTPException(400,'These settings require a service restart or are not remotely editable: '+', '.join(sorted(unsupported)))
  if values.get('theme') not in (None,'dark','light','system'): raise HTTPException(400,'theme must be dark, light or system')
  if values.get('tool_approval_required') is False: raise HTTPException(400,'Tool approval is mandatory and cannot be disabled')
@@ -115,6 +115,10 @@ def validate_settings(req:SettingsInput):
  if values.get('litertlm_timeout_seconds') is not None and not 10<=values['litertlm_timeout_seconds']<=180:raise HTTPException(400,'litertlm_timeout_seconds must be 10-180')
  if values.get('runtime_mode') in ('hybrid','litertlm') and not values.get('litertlm_enabled',settings.get()['litertlm_enabled']):raise HTTPException(400,'Hybrid and LiteRT-LM modes require the optional runtime enabled')
  if values.get('tool_approval_required') not in (None,True): raise HTTPException(400,'tool_approval_required must be boolean')
+ if 'worker_enabled' in values and not isinstance(values['worker_enabled'],bool):raise HTTPException(400,'worker_enabled must be boolean')
+ if 'worker_poll_seconds' in values and not 1<=values['worker_poll_seconds']<=60:raise HTTPException(400,'worker_poll_seconds must be 1-60')
+ if 'worker_batch_size' in values and not 1<=values['worker_batch_size']<=10:raise HTTPException(400,'worker_batch_size must be 1-10')
+ if 'workflow_max_attempts' in values and not 1<=values['workflow_max_attempts']<=10:raise HTTPException(400,'workflow_max_attempts must be 1-10')
  return {'valid':True,'accepted_fields':sorted(values),'restart_required':False,'protected_invariants':{'tool_approval_required':True,'llm_enabled':False,'source_self_modification':False}}
 def _discover_ipv4_addresses():
  addresses=[]
@@ -188,6 +192,44 @@ def execute_tool(req:ToolInput):
  except (ValueError,KeyError) as e:raise HTTPException(400,str(e))
 @app.get('/api/v1/workflows')
 def list_workflows():return {'items':workflows.list(),'history':workflows.history(),'schedules':workflows.list_schedules()}
+@app.get('/api/v1/workflow-jobs')
+def list_workflow_jobs(limit:int=100,status:str|None=None):
+ try:return {'items':workflows.list_jobs(limit,status),'worker':worker_status()}
+ except ValueError as exc:raise HTTPException(400,str(exc))
+@app.post('/api/v1/workflows/{workflow_id}/enqueue')
+def enqueue_workflow(workflow_id:str,req:WorkflowEnqueueInput):
+ try:
+  item=workflows.enqueue(workflow_id,req.max_attempts);analytics.record('workflow_job_enqueued',{'job_id':item['id']})
+  return item
+ except KeyError as exc:raise HTTPException(404,str(exc))
+ except ValueError as exc:raise HTTPException(400,str(exc))
+@app.get('/api/v1/workflow-jobs/{job_id}')
+def get_workflow_job(job_id:str):
+ item=workflows.get_job(job_id)
+ if item is None:raise HTTPException(404,'Workflow job not found')
+ return item
+@app.post('/api/v1/workflow-jobs/{job_id}/cancel')
+def cancel_workflow_job(job_id:str):
+ item=workflows.cancel_job(job_id)
+ if item is None:raise HTTPException(404,'Workflow job not found')
+ return item
+@app.post('/api/v1/workflow-jobs/{job_id}/retry')
+def retry_workflow_job(job_id:str):
+ try:
+  item=workflows.retry_job(job_id)
+  if item is None:raise HTTPException(404,'Workflow job not found')
+  return item
+ except ValueError as exc:raise HTTPException(409,str(exc))
+@app.get('/api/v1/worker/status')
+def worker_status():
+ prefs=settings.get()
+ return {'enabled':prefs['worker_enabled'],'poll_seconds':prefs['worker_poll_seconds'],'batch_size':prefs['worker_batch_size'],
+  'thread_alive':bool(WORKER_THREAD and WORKER_THREAD.is_alive()),'worker_id':WORKER_ID,'queue':{
+   'queued':sum(1 for j in workflows.list_jobs(200,'queued')),'running':sum(1 for j in workflows.list_jobs(200,'running'))}}
+@app.post('/api/v1/worker/tick')
+def worker_tick(req:WorkerTickInput):
+ try:return workflows.worker_tick(tools,req.worker_id,limit=req.limit)
+ except ValueError as exc:raise HTTPException(400,str(exc))
 @app.get('/api/v1/scheduler/schedules')
 def list_schedules():return {'items':workflows.list_schedules(),'max_schedules':100,'max_batch':10}
 @app.post('/api/v1/scheduler/schedules')
