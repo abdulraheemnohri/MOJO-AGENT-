@@ -89,6 +89,8 @@ class MainActivity : ComponentActivity() {
  private fun apiCall(base: String, path: String, method: String, payload: String?, done: (String) -> Unit) {
   val body = payload?.toRequestBody("application/json".toMediaType())
   val builder = Request.Builder().url(base.trimEnd('/') + path)
+  val savedToken = getSharedPreferences("mojo", Context.MODE_PRIVATE).getString("api_token", "") ?: ""
+  if (savedToken.isNotBlank()) builder.header("Authorization", "Bearer " + savedToken)
   when (method) {
    "POST" -> builder.post(body ?: "{}".toRequestBody("application/json".toMediaType()))
    "PATCH" -> builder.patch(body ?: "{}".toRequestBody("application/json".toMediaType()))
@@ -121,7 +123,9 @@ done(if (it.isSuccessful) text else "HTTP " + it.code + ": " + text)
 fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, discover: ((List<String>) -> Unit) -> Unit) {
  val context = LocalContext.current
  val screenWidthDp = LocalConfiguration.current.screenWidthDp
- var base by remember { mutableStateOf(context.getSharedPreferences("mojo", Context.MODE_PRIVATE).getString("api_base", "http://10.0.2.2:8766/api/v1") ?: "http://10.0.2.2:8766/api/v1") }
+ val localPrefs = remember { context.getSharedPreferences("mojo", Context.MODE_PRIVATE) }
+ var base by remember { mutableStateOf(localPrefs.getString("api_base", "http://10.0.2.2:8766/api/v1") ?: "http://10.0.2.2:8766/api/v1") }
+ var apiToken by remember { mutableStateOf(localPrefs.getString("api_token", "") ?: "") }
  var tab by remember { mutableStateOf("Home") }
  var goal by remember { mutableStateOf("Create a project plan") }
  var memoryText by remember { mutableStateOf("") }
@@ -143,15 +147,39 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var runtimeSummary by remember { mutableStateOf("Runtime metrics not loaded yet.") }
  var compactMode by remember { mutableStateOf(false) }
  var showAdvanced by remember { mutableStateOf(false) }
+ var agentMode by remember { mutableStateOf("algorithms") }
+ var modelPath by remember { mutableStateOf("") }
+ var modelApproval by remember { mutableStateOf(false) }
+ var githubRepo by remember { mutableStateOf("") }
+ var githubRef by remember { mutableStateOf("main") }
+ var manifestPath by remember { mutableStateOf("mojo-extension.json") }
+ var extensionPreviewed by remember { mutableStateOf(false) }
+ var manifestHash by remember { mutableStateOf("") }
+ var runtimeEnabled by remember { mutableStateOf(false) }
+ var modelBackend by remember { mutableStateOf("cpu") }
+ var modelTimeout by remember { mutableStateOf("120") }
+ var toolName by remember { mutableStateOf("calculator") }
+ var toolInput by remember { mutableStateOf("2+2") }
+ var toolApproval by remember { mutableStateOf(false) }
+ var extensionId by remember { mutableStateOf("") }
+ var skillName by remember { mutableStateOf("") }
+ var skillOperation by remember { mutableStateOf("text_stats") }
+ var skillInput by remember { mutableStateOf("") }
+ var skillApproval by remember { mutableStateOf(false) }
+ var workerEnabled by remember { mutableStateOf(false) }
+ var workerPoll by remember { mutableStateOf("2") }
+ var workerBatch by remember { mutableStateOf("3") }
+ var jobId by remember { mutableStateOf("") }
+ var maxAttempts by remember { mutableStateOf("3") }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
- val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Runtime Logs", "Backend Control", "Settings")
+ val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Runtime Logs", "Runtime & Models", "Extensions Hub", "Backend Control", "Settings")
  val compactNavigation = screenWidthDp < 600
  val bottomTabs = listOf("Home", "Planner", "Workflows", "Settings")
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
-  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { theme = JSONObject(it).optString("theme", theme) } catch (_: Exception) { } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
+  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { val prefs = JSONObject(it); theme = prefs.optString("theme", theme); agentMode = prefs.optString("runtime_mode", agentMode); modelPath = prefs.optString("litertlm_model", modelPath); runtimeEnabled = prefs.optBoolean("litertlm_enabled", false); modelBackend = prefs.optString("litertlm_backend", modelBackend); modelTimeout = prefs.optInt("litertlm_timeout_seconds", 120).toString(); workerEnabled = prefs.optBoolean("worker_enabled", workerEnabled); workerPoll = prefs.optInt("worker_poll_seconds", 2).toString(); workerBatch = prefs.optInt("worker_batch_size", 3).toString(); maxAttempts = prefs.optInt("workflow_max_attempts", 3).toString() } catch (_: Exception) { } }; if (path == "/security/token/bootstrap" || path == "/security/token/rotate") { try { apiToken = JSONObject(it).optString("token", apiToken); if (apiToken.isNotBlank()) localPrefs.edit().putString("api_token", apiToken).apply() } catch (_: Exception) { } }; if (path == "/extensions/github/preview") { extensionPreviewed = !it.startsWith("HTTP"); try { manifestHash = JSONObject(it).optString("manifest_sha256", "") } catch (_: Exception) { manifestHash = "" } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
  }
  val darkMode = !(theme == "light" || (theme == "system" && !isSystemInDarkTheme()))
  val palette = if (darkMode) darkColorScheme(
@@ -214,6 +242,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       OutlinedButton(onClick = { request("/runtime/status") }, enabled = !busy) { Text("Refresh metrics") }
       OutlinedButton(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Diagnostics") }
+      OutlinedButton(onClick = { request("/database/status") }, enabled = !busy) { Text("Database schema") }
      }
     } }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -261,6 +290,28 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
      }, enabled = !busy && workflowName.isNotBlank() && workflowText.isNotBlank()) { Text("Create") }
      OutlinedButton(onClick = { request("/workflows") }, enabled = !busy) { Text("List workflows") }
     }
+    Text("Durable job queue", style = MaterialTheme.typography.titleMedium)
+    OutlinedTextField(scheduleWorkflowId, { scheduleWorkflowId = it }, label = { Text("Workflow ID to enqueue / schedule") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(maxAttempts, { maxAttempts = it.filter(Char::isDigit).take(2) }, label = { Text("Maximum retry attempts (1–10)") }, modifier = Modifier.fillMaxWidth())
+    Button(onClick = { request("/workflows/$scheduleWorkflowId/enqueue", "POST", JSONObject().put("max_attempts", maxAttempts.toIntOrNull() ?: 3).toString()) }, enabled = !busy && scheduleWorkflowId.isNotBlank() && (maxAttempts.toIntOrNull() ?: 0) in 1..10) { Text("Enqueue workflow") }
+    OutlinedTextField(jobId, { jobId = it }, label = { Text("Job ID for cancel / retry") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { request("/workflow-jobs?limit=100") }, enabled = !busy) { Text("List jobs") }
+     Button(onClick = { request("/worker/tick", "POST", JSONObject().put("limit", workerBatch.toIntOrNull() ?: 3).put("worker_id", "android-manual").toString()) }, enabled = !busy) { Text("Process queue") }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { request("/workflow-jobs/$jobId/cancel", "POST", "{}") }, enabled = !busy && jobId.isNotBlank()) { Text("Cancel job") }
+     OutlinedButton(onClick = { request("/workflow-jobs/$jobId/retry", "POST", "{}") }, enabled = !busy && jobId.isNotBlank()) { Text("Retry job") }
+    }
+    Text("Background worker settings", style = MaterialTheme.typography.titleMedium)
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Automatic processing", Modifier.weight(1f)); Switch(checked = workerEnabled, onCheckedChange = { workerEnabled = it }) }
+    OutlinedTextField(workerPoll, { workerPoll = it.filter(Char::isDigit).take(2) }, label = { Text("Poll seconds (1–60)") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(workerBatch, { workerBatch = it.filter(Char::isDigit).take(2) }, label = { Text("Batch size (1–10)") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/settings", "PATCH", JSONObject().put("worker_enabled", workerEnabled).put("worker_poll_seconds", workerPoll.toIntOrNull() ?: 2).put("worker_batch_size", workerBatch.toIntOrNull() ?: 3).put("workflow_max_attempts", maxAttempts.toIntOrNull() ?: 3).toString()) }, enabled = !busy && (workerPoll.toIntOrNull() ?: 0) in 1..60 && (workerBatch.toIntOrNull() ?: 0) in 1..10) { Text("Save worker settings") }
+     OutlinedButton(onClick = { request("/worker/status") }, enabled = !busy) { Text("Worker status") }
+    }
+    Text("Worker runs inside the backend and resumes queued jobs after restart. Use database backup before restoring or migrating production data.")
     Text("Persistent scheduler", style = MaterialTheme.typography.titleMedium)
     OutlinedTextField(scheduleWorkflowId, { scheduleWorkflowId = it }, label = { Text("Workflow ID") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(scheduleSeconds, { scheduleSeconds = it.filter(Char::isDigit).take(8) }, label = { Text("Interval seconds (60–2592000)") }, modifier = Modifier.fillMaxWidth())
@@ -304,8 +355,54 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    }
    "Tools" -> {
     Text("Allowlisted tools", style = MaterialTheme.typography.titleLarge)
-    Button(onClick = { request("/tools") }, enabled = !busy) { Text("Load available tools") }
-    Text("Tool execution requires explicit approval. Shell commands are not available.")
+    Text("Built-in and installed tools are approval-gated. Shell execution is not available.")
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+     listOf("calculator", "text_stats").forEach { name -> FilterChip(selected = toolName == name, onClick = { toolName = name; toolInput = if (name == "calculator") "2+2" else "" }, label = { Text(name) }) }
+    }
+    OutlinedTextField(toolInput, { toolInput = it }, label = { Text(if (toolName == "calculator") "Arithmetic expression" else "Text to analyze") }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve this execution", Modifier.weight(1f)); Switch(checked = toolApproval, onCheckedChange = { toolApproval = it }) }
+    Button(onClick = { val args = if (toolName == "calculator") JSONObject().put("expression", toolInput) else JSONObject().put("text", toolInput); request("/tools/execute", "POST", JSONObject().put("name", toolName).put("arguments", args).put("approved", toolApproval).toString()) }, enabled = !busy && toolApproval && toolInput.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Execute approved tool") }
+    OutlinedButton(onClick = { request("/tools") }, enabled = !busy) { Text("Refresh tool registry") }
+   }
+   "Runtime & Models" -> {
+    Text("Agent runtime", style = MaterialTheme.typography.titleLarge)
+    Text("Algorithms are always available. Local LiteRT-LM is optional and disabled until configured.")
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Enable LiteRT-LM", Modifier.weight(1f)); Switch(checked = runtimeEnabled, onCheckedChange = { runtimeEnabled = it }) }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+     listOf("algorithms", "hybrid", "litertlm").forEach { mode -> FilterChip(selected = agentMode == mode, onClick = { agentMode = mode }, label = { Text(mode) }) }
+    }
+    OutlinedTextField(modelPath, { modelPath = it }, label = { Text("Backend-host .litertlm path or Hugging Face owner/model") }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve local inference", Modifier.weight(1f)); Switch(checked = modelApproval, onCheckedChange = { modelApproval = it }) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/settings", "PATCH", JSONObject().put("runtime_mode", agentMode).put("litertlm_enabled", runtimeEnabled).put("litertlm_model", modelPath).put("litertlm_backend", modelBackend).put("litertlm_timeout_seconds", modelTimeout.toIntOrNull() ?: 120).toString()) }, enabled = !busy && (agentMode == "algorithms" || runtimeEnabled) && (modelTimeout.toIntOrNull() ?: 0) in 10..180) { Text("Save runtime config") }
+     OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load runtime settings") }
+     OutlinedButton(onClick = { request("/agent/runtime") }, enabled = !busy) { Text("Runtime status") }
+    }
+    Button(onClick = { request("/agent/run", "POST", JSONObject().put("goal", goal).put("mode", agentMode).put("model", modelPath).put("backend", modelBackend).put("approved", modelApproval).toString()) }, enabled = !busy && goal.isNotBlank() && (agentMode == "algorithms" || (runtimeEnabled && modelPath.isNotBlank() && modelApproval)), modifier = Modifier.fillMaxWidth()) { Text("Run agent") }
+    Text("Hybrid mode uses the deterministic plan as authority. Model output is advisory and cannot execute tools. Model inference requires explicit approval.", style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { request("/litertlm/status") }, enabled = !busy) { Text("LiteRT-LM runtime status") }
+    OutlinedButton(onClick = { request("/litertlm/benchmark", "POST", JSONObject().put("goal", "benchmark").put("model", modelPath).put("approved", modelApproval).toString()) }, enabled = !busy && runtimeEnabled && modelPath.isNotBlank() && modelApproval && (modelTimeout.toIntOrNull() ?: 0) in 10..180) { Text("Benchmark model") }
+   }
+   "Extensions Hub" -> {
+    Text("GitHub skills and tools", style = MaterialTheme.typography.titleLarge)
+    Text("Only declarative JSON manifests are installed. Repository code and shell scripts are never executed.")
+    OutlinedTextField(githubRepo, { githubRepo = it }, label = { Text("GitHub repository owner/name") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(githubRef, { githubRef = it }, label = { Text("Branch or tag") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(manifestPath, { manifestPath = it; extensionPreviewed = false; manifestHash = "" }, label = { Text("Manifest path") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { extensionPreviewed = false; manifestHash = ""; request("/extensions/github/preview", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).toString()) }, enabled = !busy && githubRepo.contains("/")) { Text("Preview") }
+     Button(onClick = { request("/extensions/github/install", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).put("expected_sha256", manifestHash).toString()); extensionPreviewed = false }, enabled = !busy && extensionPreviewed) { Text("Install") }
+    }
+    OutlinedButton(onClick = { request("/extensions") }, enabled = !busy) { Text("List installed extensions") }
+    OutlinedTextField(extensionId, { extensionId = it }, label = { Text("Extension ID (skill:name or tool:name)") }, modifier = Modifier.fillMaxWidth())
+    OutlinedButton(onClick = { request("/extensions/$extensionId", "DELETE") }, enabled = !busy && extensionId.contains(":")) { Text("Uninstall extension") }
+    OutlinedTextField(skillName, { skillName = it }, label = { Text("Installed skill name") }, modifier = Modifier.fillMaxWidth())
+    Button(onClick = { request("/skills/$skillName/run", "POST", JSONObject().put("goal", goal).toString()) }, enabled = !busy && skillName.isNotBlank() && goal.isNotBlank()) { Text("Run skill plan") }
+    OutlinedTextField(skillOperation, { skillOperation = it }, label = { Text("Allowed operation from skill manifest") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(skillInput, { skillInput = it }, label = { Text(if (skillOperation == "calculator") "Arithmetic expression" else "Input text") }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve this skill execution", Modifier.weight(1f)); Switch(checked = skillApproval, onCheckedChange = { skillApproval = it }) }
+    Button(onClick = { val args = if (skillOperation == "calculator") JSONObject().put("expression", skillInput) else JSONObject().put("text", skillInput); request("/skills/$skillName/execute", "POST", JSONObject().put("operation", skillOperation).put("arguments", args).put("approved", skillApproval).toString()) }, enabled = !busy && skillName.isNotBlank() && skillInput.isNotBlank() && skillApproval) { Text("Execute approved skill operation") }
+    OutlinedButton(onClick = { request("/skills/$skillName/history") }, enabled = !busy && skillName.isNotBlank()) { Text("Load skill execution history") }
    }
    "Runtime Logs" -> {
     Text("Runtime event log", style = MaterialTheme.typography.titleLarge)
@@ -327,10 +424,17 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    "Security" -> {
     Text("Security status", style = MaterialTheme.typography.titleLarge)
     Button(onClick = { request("/security/status") }, enabled = !busy) { Text("Inspect security controls") }
-    Text("The server remains loopback-only. Remote access is not configured.")
+    Text("Token authentication is supported. Initial token creation must be performed from the backend host; keep LAN access on trusted networks and use HTTPS for remote exposure.")
+    OutlinedTextField(apiToken, { apiToken = it }, label = { Text("API bearer token") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { localPrefs.edit().putString("api_token", apiToken.trim()).apply(); output = "API token saved securely in this app preferences." }, enabled = !busy) { Text("Save token") }; OutlinedButton(onClick = { apiToken = ""; localPrefs.edit().remove("api_token").apply(); output = "Saved API token removed from this device." }) { Text("Forget token") } }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { request("/security/status") }, enabled = !busy) { Text("Refresh security status") }; Button(onClick = { request("/security/token/bootstrap", "POST", "{}") }, enabled = !busy) { Text("Create initial token") } }
    }
    "Settings" -> {
     Text("Runtime settings", style = MaterialTheme.typography.titleLarge)
+    Text("Backend API security", style = MaterialTheme.typography.titleMedium)
+    OutlinedTextField(apiToken, { apiToken = it }, label = { Text("Bearer token (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { localPrefs.edit().putString("api_token", apiToken.trim()).apply(); output = "API token saved for this device." }) { Text("Save API token") }; OutlinedButton(onClick = { apiToken = ""; localPrefs.edit().remove("api_token").apply() }) { Text("Clear token") } }
+    OutlinedButton(onClick = { request("/security/status") }, enabled = !busy) { Text("Check API security") }
     ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
      Text("Interface preferences", style = MaterialTheme.typography.titleMedium)
      Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Compact spacing", Modifier.weight(1f)); Switch(checked = compactMode, onCheckedChange = { compactMode = it }) }

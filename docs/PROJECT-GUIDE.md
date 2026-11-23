@@ -183,3 +183,12 @@ P3: optional local model adapters only behind explicit opt-in, bounded resource 
 ## 12. Licensing and contributions
 
 The package metadata declares Apache-2.0. Keep new modules tested, preserve the control-core boundary, and document platform-specific requirements. Donations can be added as a voluntary support option without locking core functionality behind a subscription.
+
+
+## New runtime and extensions layer
+
+The feature branch adds `mojo_agent/agent_runtime.py`, `mojo_agent/litertlm.py` and `mojo_agent/extensions.py`. Algorithms remain the default. Hybrid mode computes a deterministic plan first and optionally requests advisory local model output. Inference requires explicit approval. Runtime preferences include mode, enable flag, model path/repository, CPU/GPU backend and bounded timeout.
+
+GitHub extensions install from public declarative JSON manifests. Preview exposes the SHA-256 digest; installation must submit the exact preview hash to prevent installing a changed manifest. Skills store bounded instructions and approved built-in operation names. Skill runs return the instructions and deterministic plan; they do not auto-execute tools. Tool manifests can only select built-in safe operations. No repository source, shell script or binary is executed.
+
+New API routes: `GET /agent/runtime`, `POST /agent/run`, `GET /litertlm/status`, `POST /litertlm/run`, `POST /litertlm/benchmark`, `GET /extensions`, `POST /extensions/github/preview`, `POST /extensions/github/install`, `DELETE /extensions/{extension_id}`, `POST /skills/{name}/run`, and `POST /tools/installed/{name}/execute`.

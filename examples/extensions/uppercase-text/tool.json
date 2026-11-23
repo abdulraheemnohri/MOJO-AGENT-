@@ -1,0 +1,9 @@
+{
+  "schema": "mojo.extension.v1",
+  "kind": "tool",
+  "name": "uppercase-text",
+  "version": "1.0.0",
+  "description": "Convert a supplied text value to uppercase",
+  "operation": "uppercase",
+  "input_schema": {"text": "string"}
+}

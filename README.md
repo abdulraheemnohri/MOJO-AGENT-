@@ -98,6 +98,21 @@ gradle --no-daemon -p android :app:assembleDebug
 
 The frontend/backend CI and Android debug APK CI passed for main commit `3c41501a0a0109b924af74f1bbe888c29b0abf56`. CI success is not a substitute for physical-device testing.
 
+## Optional LiteRT-LM CLI
+
+Install with `python -m pip install --upgrade litert-lm` inside the MOJO AGENT virtual environment. Check availability using `mojo-agent litertlm status`. See [docs/LITERTLM.md](docs/LITERTLM.md) for model execution, benchmarking and API configuration. It remains disabled by default.
+
 ## Platform boundaries
 
-Python is the supported reference runtime. React/Vite is the web dashboard. Kotlin/Compose is the Android client. Android can host the backend separately through Termux. There is no native iOS client, no Windows executable installer, and no production-hardened remote server. Mojo compiler integration remains experimental. Optional LiteRT-LM work is isolated on open PR #4 and is not part of this main-branch baseline.
+Python is the supported reference backend. React/Vite is the browser dashboard. Kotlin/Jetpack Compose is the Android client. Android can also host the backend via Termux. There is no native iOS client, Windows executable installer, or production-hardened remote server in this release. Mojo compiler integration remains experimental.
+
+
+## Optional hybrid runtime and GitHub extensions
+
+The default agent mode is deterministic **Algorithms**. Optional **Hybrid** and **LiteRT-LM** modes use the local LiteRT-LM CLI on the backend host; model inference requires explicit approval. See [Hybrid Runtime and Extensions](docs/HYBRID-RUNTIME-AND-EXTENSIONS.md).
+
+The dashboard and Android client include Runtime & Models and Extensions Hub screens. GitHub skills and tools install from public JSON manifests only. Arbitrary Python, shell scripts and binaries are never executed. Install scripts for the optional CLI:
+- Windows: `scripts/install_litertlm.ps1`
+- Linux/macOS/Termux: `scripts/install_litertlm.sh`
+
+Example declarative packages are in `examples/extensions/`. Pin a commit SHA and review the manifest hash before installation.
