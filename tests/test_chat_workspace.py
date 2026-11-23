@@ -89,3 +89,23 @@ def test_local_model_catalog_validation_and_selection(tmp_path, monkeypatch):
     assert selected.status_code == 200
     assert api.settings.get()["litertlm_model"] == "acme/tiny-model"
     assert client.delete("/api/v1/chat/models/" + added.json()["id"]).json()["deleted"] is True
+
+def test_chat_skill_plan_is_recorded_without_executing_tools(tmp_path, monkeypatch):
+    from mojo_agent.extensions import GitHubExtensionRegistry
+    original = api.extensions
+    registry = GitHubExtensionRegistry(str(tmp_path / "skills.sqlite3"))
+    manifest = {"schema":"mojo.extension.v1","kind":"skill","name":"chat-skill","version":"1.0",
+                "description":"Plan tasks","instructions":"Break down the requested task.","tools":["text_stats"]}
+    monkeypatch.setattr("mojo_agent.extensions._fetch_manifest", lambda *args: (manifest, "a"*64))
+    monkeypatch.setattr(api, "extensions", registry)
+    client = _client(tmp_path, monkeypatch)
+    try:
+        registry.install("acme/chat-skill", "main", "skill.json", expected_sha256="a"*64)
+        conversation = client.post("/api/v1/chat/conversations", json={}).json()
+        response = client.post(f"/api/v1/chat/conversations/{conversation['id']}/skills/chat-skill/plan",
+                               json={"goal":"Inspect the code; write tests"})
+        assert response.status_code == 200
+        assert response.json()["plan"]["execution"].startswith("plan only")
+        assert response.json()["message"]["role"] == "tool"
+    finally:
+        monkeypatch.setattr(api, "extensions", original)
