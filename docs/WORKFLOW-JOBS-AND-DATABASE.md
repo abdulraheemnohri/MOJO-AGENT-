@@ -34,7 +34,7 @@ The backend starts a lightweight daemon thread. It remains idle unless `worker_e
 }
 ```
 
-The worker stops with the backend process. At startup, interrupted jobs are recovered to the queue if attempts remain; exhausted jobs are marked failed. For reliable always-on operation, run the backend under an operating-system service manager (Windows Task Scheduler / NSSM, or systemd on Linux). The worker is not a distributed multi-host queue and should use one active backend process against a local SQLite database.
+The worker also checks and executes due recurring schedules on each enabled cycle. The worker stops with the backend process. At startup, interrupted jobs are recovered to the queue if attempts remain; exhausted jobs are marked failed. For reliable always-on operation, run the backend under an operating-system service manager (Windows Task Scheduler / NSSM, or systemd on Linux). The worker is not a distributed multi-host queue and should use one active backend process against a local SQLite database.
 
 ## Database schema and recovery
 
