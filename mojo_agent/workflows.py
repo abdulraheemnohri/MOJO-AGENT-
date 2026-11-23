@@ -241,4 +241,5 @@ class WorkflowStore:
    job=self.claim_job(worker_id,stamp)
    if not job:break
    processed.append(self.execute_job(job["id"],tools,stamp))
-  return {"worker_id":worker_id,"processed":len(processed),"jobs":processed,"checked_at":stamp}
+  scheduled=self.run_due(tools,now=stamp,limit=min(10,limit))
+  return {"worker_id":worker_id,"processed":len(processed),"jobs":processed,"scheduled":scheduled,"checked_at":stamp}
