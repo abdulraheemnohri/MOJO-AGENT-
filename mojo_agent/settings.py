@@ -41,6 +41,8 @@ class SettingsStore:
   if 'chat_max_history' in values and (not isinstance(values['chat_max_history'],int) or not 2<=values['chat_max_history']<=30):raise ValueError('chat_max_history must be 2-30')
   current=self.get();effective_mode=values.get('runtime_mode',current['runtime_mode']);effective_enabled=values.get('litertlm_enabled',current['litertlm_enabled'])
   if effective_mode in {'hybrid','litertlm'} and not effective_enabled:raise ValueError('Enable LiteRT-LM before selecting hybrid or litertlm mode')
+  effective_chat_mode=values.get('chat_default_mode',current['chat_default_mode'])
+  if effective_chat_mode=='litertlm' and not effective_enabled:raise ValueError('Enable LiteRT-LM before selecting it as the default chat mode')
   with self.db() as c:
    for k,v in values.items():c.execute('INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(k,json.dumps(v)))
   return self.get()
