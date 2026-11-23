@@ -51,3 +51,21 @@ def test_hybrid_keeps_deterministic_plan_and_requires_approval():
     result=runtime.run("inspect",mode="hybrid",model="org/model",approved=True)
     assert result["model_result"]["output"]=="advisory suggestion"
     assert "advisory" in result["hybrid_policy"]
+
+
+def test_skill_execution_requires_allowlist_and_approval(tmp_path, monkeypatch):
+    registry=GitHubExtensionRegistry(str(tmp_path/'skills.db'))
+    manifest={"schema":"mojo.extension.v1","kind":"skill","name":"safe-skill","version":"1.0.0",
+              "description":"A bounded skill","instructions":"Transform text","tools":["uppercase"]}
+    monkeypatch.setattr("mojo_agent.extensions._fetch_manifest",lambda *args:(manifest,"e"*64))
+    registry.install("acme/demo","main","skill.json",expected_sha256="e"*64)
+    with pytest.raises(PermissionError):
+        registry.execute_skill("safe-skill","uppercase",{"text":"hello"})
+    with pytest.raises(ExtensionError):
+        registry.execute_skill("safe-skill","calculator",{"expression":"2+2"},approved=True)
+    result=registry.execute_skill("safe-skill","uppercase",{"text":"hello"},approved=True)
+    assert result["result"]=="HELLO" and result["status"]=="completed"
+    history=registry.skill_history("safe-skill")
+    assert history[0]["operation"]=="uppercase"
+    assert '"length":5' in history[0]["input_summary"]
+    assert "hello" not in history[0]["input_summary"]
