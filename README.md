@@ -63,11 +63,15 @@ The APK is a client, not a bundled Python server. Download the `mojo-agent-debug
 - SQLite memory CRUD, search, import and export
 - Knowledge graph nodes, edges and search
 - Allowlisted tools with mandatory approval
-- Workflow CRUD, bounded synchronous execution and run history
-- Scheduler definitions with manual scheduler tick
+- Visual declarative workflows with templates, prior-step conditions and bounded execution
+- Durable SQLite workflow queue, immutable job snapshots, retries, cancellation, recovery and opt-in worker
+- Persistent scheduler definitions, manual tick and worker status
+- SQLite migrations, backup export/inspection and loopback-only verified restore
+- Optional bearer-token API authentication, rotation and revocation
+- Optional Algorithms / Hybrid / LiteRT-LM runtime with explicit inference approval
+- Declarative JSON-only GitHub extensions and approval-gated allowlisted skill operations
 - Persistent analytics, diagnostics, runtime status and bounded metadata-only logs
-- Settings and responsive dashboard preferences
-- Adaptive Android client with local backend discovery
+- Responsive React dashboard and adaptive Android backend client with queue/runtime/security controls
 
 ## Project documentation
 
@@ -82,7 +86,7 @@ The APK is a client, not a bundled Python server. Download the `mojo-agent-debug
 
 - Python 3.10+ and Node.js 20+ recommended.
 - No Docker, API key, LLM or paid service required for the main baseline.
-- Backend binds to loopback by default. LAN mode has no remote authentication/TLS; do not expose it to the public internet.
+- Backend binds to loopback by default. Bearer-token authentication is optional; TLS, rate limiting and multi-user RBAC are not included. Do not expose the backend directly to the public internet.
 - Tool approval is mandatory. Shell execution and protected-source self-modification are disabled.
 - Evolution can propose bounded strategy parameters only; candidate validation and explicit approval are required.
 - SQLite database: `data/mojo_agent.sqlite3`. Back up the `data/` directory while the backend is stopped.
@@ -96,11 +100,11 @@ npm run build
 gradle --no-daemon -p android :app:assembleDebug
 ```
 
-The frontend/backend CI and Android debug APK CI passed for main commit `3c41501a0a0109b924af74f1bbe888c29b0abf56`. CI success is not a substitute for physical-device testing.
+See [implementation status](docs/IMPLEMENTATION-STATUS.md) for the current CI result and release blockers. CI success is not a substitute for physical-device testing.
 
 ## Optional LiteRT-LM CLI
 
-Install with `python -m pip install --upgrade litert-lm` inside the MOJO AGENT virtual environment. Check availability using `mojo-agent litertlm status`. See [docs/LITERTLM.md](docs/LITERTLM.md) for model execution, benchmarking and API configuration. It remains disabled by default.
+Install the native runner with `python -m pip install --upgrade litert-lm` inside the MOJO AGENT virtual environment. Local `.litertlm` bundles use this CLI. Hugging Face repository IDs require the separate LiteRT CLI wrapper (`litert lm`), installed with Python 3.13 and `litert-cli-nightly`. Check availability using `mojo-agent litertlm status`. See [Hybrid Runtime and Extensions](docs/HYBRID-RUNTIME-AND-EXTENSIONS.md). Runtime remains disabled by default.
 
 ## Platform boundaries
 

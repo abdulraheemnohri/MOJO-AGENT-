@@ -1,110 +1,71 @@
-# MOJO AGENT implementation status
+# MOJO AGENT — implementation status
 
-## Verified main-branch implementation
+Last reconciled against `main` after PRs #4, #6, #7 and #8 were merged on 2026-11-23.
 
-- Python/FastAPI reference runtime with versioned JSON API.
-- SQLite persistence for memory, workflows, knowledge graph, analytics, settings and evolution state.
-- Deterministic planning and algorithm utilities.
-- Bounded evolutionary candidate generation, validation and explicit approval.
-- Allowlisted deterministic tools; approval is mandatory and shell execution is disabled.
-- Workflow CRUD, bounded synchronous execution, run history and schedule definitions with manual tick.
-- Knowledge graph node/edge CRUD and search.
-- Memory CRUD/search/import/export, including atomic batch import.
-- Runtime status, health, diagnostics, bounded request metadata logs and backup export.
-- Settings validation and persistence for supported preferences.
-- React/Vite dashboard with feature navigation, workflow editing/history, memory search, graph relationships, analytics, security/diagnostics, responsive design, mobile navigation, density and reduced-motion preferences.
-- Kotlin/Jetpack Compose Android client with adaptive phone navigation, backend configuration/discovery and screens for the core runtime areas.
-- Windows, POSIX and Termux install/run scripts.
-- CI validation: frontend/backend workflow passed; Android debug APK workflow completed successfully and published the `mojo-agent-debug-apk` artifact for main SHA `3c41501a0a0109b924af74f1bbe888c29b0abf56`.
+## Implemented on main
 
-## Explicitly not complete / limitations
+- Python/FastAPI reference backend with versioned JSON API and SQLite persistence.
+- Deterministic goal decomposition, dependency ordering and algorithm utilities.
+- Bounded evolutionary strategy proposals with validation and explicit approval; the protected control core is not self-modified.
+- Memory CRUD, search, JSON import/export and knowledge-graph nodes, edges and search.
+- Allowlisted deterministic tools with mandatory approval; no arbitrary shell, Python evaluation or dynamic extension code.
+- Declarative workflow builder with ordered steps, text, calculator, text-statistics and template operations; earlier-step-only data mappings and conditional execution.
+- Durable SQLite workflow queue with immutable snapshots, bounded retries, backoff, cooperative cancellation, job history, startup recovery and an opt-in in-process worker.
+- Persistent schedule definitions and worker tick support. Queue and worker are single-host SQLite features, not a distributed execution system.
+- SQLite schema migrations, database status, backup export/inspection and loopback-only restore with integrity checks, optional SHA-256 verification, request-size cap and safety backup.
+- Optional API bearer-token authentication with high-entropy tokens, salted hashes, constant-time verification, rotation and revocation. Authentication is opt-in; TLS and multi-user RBAC are not included.
+- Optional Algorithms / Hybrid / LiteRT-LM runtime modes. Algorithms remains the default and does not require a model. Local inference is approval-gated and advisory; it does not execute tools.
+- Optional LiteRT-LM CLI adapter for local `.litertlm` bundles and a separate LiteRT CLI wrapper for Hugging Face repository IDs.
+- Public JSON-only GitHub extension manifests with preview/hash verification, install/list/uninstall, skill instructions and approval-gated allowlisted skill operations. No extension source code, shell scripts or binaries are executed.
+- React/Vite dashboard with responsive navigation, workflow composition and queue controls, runtime/model and extension pages, security controls, diagnostics, analytics and settings.
+- Kotlin/Jetpack Compose Android client with adaptive navigation, backend discovery/configuration, runtime/extensions and workflow queue controls, plus bearer-token support.
+- Windows, POSIX and Termux setup/run scripts. Windows per-user startup is implemented as a Task Scheduler task, not a native Windows service or packaged EXE installer.
 
-- Main baseline intentionally has no LLM integration. Optional LiteRT-LM adapter work remains on separate open PR #4 until merged.
-- Workflow execution is synchronous. Scheduler schedules require an explicit tick; no persistent background scheduler daemon or distributed queue.
-- Android is still a single large Compose activity; raw JSON response presentation remains in places. Native file picker, complete structured CRUD experiences, full workflow editor and comprehensive UI tests remain outstanding.
-- React feature logic is concentrated in `App.tsx`; component-level tests and feature decomposition remain outstanding.
-- Backup export exists; database restore and robust migration/rollback tooling are not implemented.
-- LAN API has no authentication/TLS and is not safe for public exposure.
-- No native iOS app or native Windows executable installer.
-- Mojo compiler support is experimental; Python is the supported reference runtime.
-- CI build success does not prove physical-device behavior on every Android device.
+## Release validation — current blocker
 
-## Next engineering priorities
+The current main commit at the time of this check was `094bd0e53dbc9e51bffa1decf79cd48ce5192454`. GitHub Actions run [45125277206](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/runs/45125277206) completed with **failure**:
 
-1. Secure remote/LAN mode with authentication, TLS, rate limits and explicit trusted-network configuration before remote use.
-2. Add database migrations and tested backup restore.
-3. Split Android and React UI into feature modules; add accessibility, loading/error/empty states and automated UI tests.
-4. Add a persistent scheduler worker with crash recovery, idempotency and cancellation.
-5. Keep optional model runtimes isolated, opt-in and subordinate to the protected control core.
+- Python job failed during test collection: `LiteRTLMRunInput` and `LiteRTLMBenchmarkInput` were referenced by API routes but had not been defined.
+- Frontend build passed.
+- Installer validation passed.
+- Follow-up PR #9 fixes the missing request schemas, adds regression tests and reconciles the stale project documentation.
+- PR #9 implementation commit `c63b14807758d503881ff8c8807bc9bd2ad97a42` passed CI run [45125919085](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/runs/45125919085): Python **92 passed**, frontend build passed and installer validation passed. A later documentation-only commit updates this status record; CI has not been rerun on that documentation-only commit.
+- The PR is open and not yet merged. The failing main commit remains the deployed branch state until that change is merged.
+- Android APK CI passed earlier on merge commit `30e56ee78d5858e74eb5776ae1f8a3e3bda87fbc`; PR #9 does not modify Android source or workflow files.
 
-## Deliberate limitations
-- No LLM integration by design.
-- Main-branch baseline remains synchronous; durable queue and opt-in worker are implemented on the feature branch, but not merged into main.
-- Android still uses a single Compose activity and a raw JSON response panel; native file pickers, full workflow editor and structured list rendering are incomplete.
-- Native Mojo compiler compatibility and Windows installer packaging require separate toolchain validation.
-- API defaults to loopback; physical-device access should use a trusted local connection such as ADB reverse.
+After PR #9 is merged, verify CI on the new main commit. A successful build still does not replace physical-device testing or a real local LiteRT-LM inference test.
 
+## Known limitations — intentionally not claimed as complete
 
-## Additional feature branch implementation (pending CI/merge)
-- Algorithms, Hybrid and LiteRT-LM agent modes; Algorithms remains the default and needs no model.
-- Optional LiteRT-LM CLI adapter with CPU/GPU selection, bounded timeout, local `.litertlm` or Hugging Face model ID, inference approval and benchmark endpoint.
-- Persistent runtime mode/model/backend settings with validation.
-- GitHub extension registry for declarative skill/tool JSON manifests, preview hash verification, install/list/uninstall and skill plan endpoint.
-- Frontend Runtime & Models and Extensions Hub pages; installed GitHub tools/skills are surfaced in the capability registry.
-- Android Runtime & Models and Extensions Hub screens with model configuration and GitHub manifest preview/install.
-- Example manifests and optional Windows/POSIX LiteRT-LM CLI installer scripts.
+- No native iOS client.
+- Android APK is a backend client; it does not bundle the Python backend, model weights or desktop LiteRT-LM CLI. Android can host the backend separately through Termux.
+- No native Windows EXE/MSI installer. The Windows startup helper creates a per-user scheduled task.
+- API bearer authentication is optional. TLS termination, public-internet hardening, rate limiting, multi-user accounts/RBAC and distributed worker coordination are not included. Do not expose the backend directly to the public internet.
+- SQLite queue is single-host. A running step is only cooperatively cancellable between steps; an active subprocess/model inference is bounded by its configured timeout rather than forcibly terminated by the queue.
+- Scheduler definitions and due-work processing are supported by the backend worker/tick, but this is not a multi-node scheduler.
+- React feature logic and the Android client still have concentrated/single-activity areas. Full component decomposition, comprehensive UI automation, native file pickers and structured detail experiences for every resource remain future work.
+- LiteRT-LM model execution depends on the installed CLI, supported model artifacts, host drivers and available resources. GPU availability is environment-dependent. The adapter's command routing tests do not prove successful inference on every host.
+- Skills are not autonomous tool-using agents: each operation is allowlisted and requires explicit approval.
+- Mojo compiler integration remains experimental; Python is the supported reference backend.
 
-### Limitations of this feature branch
-- LiteRT-LM executes on the backend host, not inside the Android APK; Android is a remote local-network client.
-- Hugging Face model loading may download large artifacts and requires network/storage. A local `.litertlm` file is needed for offline inference.
-- GPU availability depends on the host runtime, drivers and model. CPU is the portable baseline.
-- GitHub extension manifests are public JSON only. No arbitrary code execution, dynamic imports, shell hooks or binary extensions.
-- Skills currently return their instructions and deterministic task plan; tools are not auto-executed by a skill.
-- All features in this section are pending the branch CI run and review; do not treat them as merged into main until PR merge.
+## Final release checklist
 
+1. Confirm all GitHub Actions workflows pass on the final merge commit.
+2. Build and install the Android debug APK; verify backend discovery, auth, workflow queue and settings on a physical device.
+3. Run Windows 10/11 install, backend, frontend and scheduled-startup smoke tests.
+4. Exercise database backup, inspect and restore against a disposable test database before production data.
+5. Test local `.litertlm` inference only with a supported model and host; keep Algorithms mode as the safe default.
+6. Create a tagged release and attach a freshly built APK only after those checks pass.
 
-### Skill execution engine (pending branch CI/review)
-- Installed skills can execute only manifest-allowlisted built-in operations, one operation per request.
-- Explicit approval is required for every execution; the backend rejects operations outside the skill allowlist.
-- SQLite stores bounded skill execution history with status and input shape/length metadata; raw input text is not persisted.
-- Web and Android clients expose skill operation execution and history.
-- LiteRT-LM passes Hugging Face repository IDs directly to the CLI rather than guessing a model artifact filename.
+## Local verification commands
 
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+cd frontend
+npm install
+npm run build
+cd ..
+gradle --no-daemon -p android :app:assembleDebug
+```
 
-### Durable workflow engine and database recovery (feature branch; CI pending)
-- Added a persistent SQLite job queue with workflow-step snapshots, bounded queue capacity, attempt counters, exponential retry delay and per-job status/result history.
-- Added cancellation for queued jobs and cooperative cancellation checks between running workflow steps.
-- Added worker claim locking, bounded worker batches, interrupted-job recovery on backend startup and an opt-in background daemon.
-- Added worker settings: enabled flag, polling interval, batch size and default retry attempts.
-- Added job queue/status/cancel/retry/manual worker APIs and dashboard + Android workflow controls.
-- Added SQLite schema version tracking and idempotent migration metadata.
-- Added loopback-only backup inspection and restore with integrity checks, optional SHA-256 verification, size cap, pre-restore safety backup and WAL handling.
-- Added database status and restore controls to the web settings page and schema diagnostics to Android.
-- Distributed queue coordination, forced interruption of a currently executing step and production multi-process database operation remain out of scope. TLS termination is still a deployment responsibility; do not expose the backend directly to the public internet.
-
-
-### Local API security and Windows startup (feature branch)
-- Added opt-in bearer-token authentication for all API routes except health, security-status and loopback-only initial token bootstrap.
-- Generates 40-byte random URL-safe tokens, stores only salted SHA-256 digests, uses constant-time digest comparison, and supports authenticated token rotation and revocation.
-- Initial token creation, rotation and revocation are loopback-restricted. CORS allows Authorization headers and preflight requests.
-- Web Security Center supports initial setup, token rotation, revocation and session-only token storage. Android accepts a bearer token, stores it in app-private preferences and supports loopback initial setup.
-- Added a per-user Windows Task Scheduler installer and uninstall script; it starts the backend at logon on 127.0.0.1 without Docker or administrator privileges.
-- The dashboard retains its responsive dark/light theme, compact/comfortable density, keyboard navigation, mobile drawer and reduced-motion support; new security cards follow the existing adaptive design system.
-- TLS certificates, public internet exposure, multi-user RBAC and distributed worker coordination are not enabled by this change.
-
-
-### Visual workflow builder and adaptive interface
-- Replaced the single-text workflow form with a multi-step visual composer supporting text output, text statistics, calculator and safe template/data-mapping steps.
-- Supports up to 50 ordered steps, add/remove, move up/down, editing existing workflows, and starter/analysis templates.
-- Adds conditional execution against earlier step results with equals, not_equals, contains and truthy operators. False conditions are recorded as skipped; the same validation and behavior apply to direct and queued runs. The visual editor exposes prior-step selection and expected-value controls.
-- Template mappings and conditions can reference only earlier steps. No arbitrary expression evaluator, shell command, script, dynamic import or user-supplied code is executed.
-- Added responsive step cards and mobile stacking styles consistent with MOJO's design system.
-
-
-### Conditional workflow execution (feature branch; CI pending)
-- Added optional per-step conditions referencing an earlier step index.
-- Supported operators: equals, not_equals, contains and truthy. Non-truthy comparisons use bounded text values.
-- False conditions create explicit skipped step results and do not invoke the step operation.
-- The same deterministic evaluator is used by direct workflow runs and durable queue jobs.
-- Frontend step cards provide condition enable/disable, source-step selection, operator selection and expected text.
-- Automated tests cover false/true conditions, validation rejection and immutable queued workflow snapshots.
+Features are considered release-verified only when the matching code and CI evidence are available.
