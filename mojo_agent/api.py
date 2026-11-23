@@ -139,6 +139,30 @@ def runtime_logs(limit:int=100,level:str|None=None,q:str|None=None):
 def clear_runtime_logs():
  with RUNTIME_LOG_LOCK: removed=len(RUNTIME_LOGS);RUNTIME_LOGS.clear()
  return {'cleared':removed}
+@app.get('/api/v1/litertlm/status')
+def litertlm_status():
+ cfg=settings.get()
+ return {**litertlm.status(),'enabled':cfg.get('litertlm_enabled',False),'backend':cfg.get('litertlm_backend','cpu'),'configured_timeout_seconds':cfg.get('litertlm_timeout_seconds',120)}
+@app.post('/api/v1/litertlm/run')
+def litertlm_run(req:LiteRTLMRunInput):
+ cfg=settings.get()
+ if not cfg.get('litertlm_enabled',False):raise HTTPException(403,'LiteRT-LM is disabled in Settings')
+ try:
+  result=LiteRTLM(timeout_seconds=cfg.get('litertlm_timeout_seconds',120)).run(req.model,req.prompt,req.backend,req.approved)
+  analytics.record('litertlm_run',{'backend':req.backend,'model_source':result['model_source']});return result
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except ValueError as exc:raise HTTPException(400,str(exc))
+ except LiteRTLMError as exc:raise HTTPException(503,str(exc))
+@app.post('/api/v1/litertlm/benchmark')
+def litertlm_benchmark(req:LiteRTLMBenchmarkInput):
+ cfg=settings.get()
+ if not cfg.get('litertlm_enabled',False):raise HTTPException(403,'LiteRT-LM is disabled in Settings')
+ try:
+  result=LiteRTLM(timeout_seconds=cfg.get('litertlm_timeout_seconds',120)).benchmark(req.model,req.approved)
+  analytics.record('litertlm_benchmark');return result
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except ValueError as exc:raise HTTPException(400,str(exc))
+ except LiteRTLMError as exc:raise HTTPException(503,str(exc))
 @app.get('/api/v1/health')
 def health():return {'status':'ok','name':'MOJO AGENT','version':'0.9.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
 @app.get('/api/v1/runtime/status')
@@ -223,10 +247,9 @@ def validate_settings(req:SettingsInput):
  if values.get('litertlm_timeout_seconds') is not None and not 10<=values['litertlm_timeout_seconds']<=180:raise HTTPException(400,'litertlm_timeout_seconds must be 10-180')
  if values.get('runtime_mode') in ('hybrid','litertlm') and not values.get('litertlm_enabled',settings.get()['litertlm_enabled']):raise HTTPException(400,'Hybrid and LiteRT-LM modes require the optional runtime enabled')
  if values.get('tool_approval_required') not in (None,True): raise HTTPException(400,'tool_approval_required must be boolean')
- if 'worker_enabled' in values and not isinstance(values['worker_enabled'],bool):raise HTTPException(400,'worker_enabled must be boolean')
- if 'worker_poll_seconds' in values and not 1<=values['worker_poll_seconds']<=60:raise HTTPException(400,'worker_poll_seconds must be 1-60')
- if 'worker_batch_size' in values and not 1<=values['worker_batch_size']<=10:raise HTTPException(400,'worker_batch_size must be 1-10')
- if 'workflow_max_attempts' in values and not 1<=values['workflow_max_attempts']<=10:raise HTTPException(400,'workflow_max_attempts must be 1-10')
+ if values.get('litertlm_enabled') not in (None,True,False): raise HTTPException(400,'litertlm_enabled must be boolean')
+ if values.get('litertlm_backend') not in (None,'cpu','gpu'): raise HTTPException(400,'litertlm_backend must be cpu or gpu')
+ if values.get('litertlm_timeout_seconds') is not None and (not isinstance(values['litertlm_timeout_seconds'],int) or not 10<=values['litertlm_timeout_seconds']<=180): raise HTTPException(400,'litertlm_timeout_seconds must be between 10 and 180')
  return {'valid':True,'accepted_fields':sorted(values),'restart_required':False,'protected_invariants':{'tool_approval_required':True,'llm_enabled':False,'source_self_modification':False}}
 def _discover_ipv4_addresses():
  addresses=[]

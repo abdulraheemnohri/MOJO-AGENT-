@@ -18,7 +18,7 @@ The backend is the source of truth and stores data in `data/mojo_agent.sqlite3`.
 Clone the implementation branch:
 
 ```bash
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 ```
 
@@ -50,7 +50,7 @@ Python must be 3.10 or newer; Node.js must be 20 or newer.
 ### Clone and install both components
 
 ```powershell
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install_all.ps1
@@ -103,7 +103,7 @@ npm --version
 Install and run:
 
 ```bash
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_all.sh
@@ -127,7 +127,7 @@ If your distribution's Node.js package is older than 20, install a current Node.
 sudo dnf install -y git python3 python3-pip nodejs npm
 python3 --version
 node --version
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_all.sh
@@ -144,7 +144,7 @@ Start in separate terminals:
 
 ```bash
 sudo pacman -Syu --needed git python python-pip nodejs npm
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_all.sh
@@ -167,7 +167,7 @@ npm --version
 Clone and install:
 
 ```bash
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_all.sh
@@ -251,7 +251,7 @@ pkg install -y git python nodejs-lts
 Clone and install backend + dashboard:
 
 ```bash
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_termux.sh
@@ -341,7 +341,7 @@ The SQLite database is stored in `data/mojo_agent.sqlite3`. Stop the backend bef
 Update the source:
 
 ```bash
-git pull --ff-only origin implementation/full-platform
+git pull --ff-only origin main
 ```
 
 Then rerun the installer for your OS to refresh Python and Node dependencies. Existing SQLite data is retained; keep a backup before updating.
@@ -370,6 +370,10 @@ Then rerun the installer for your OS to refresh Python and Node dependencies. Ex
 
 **APK installation blocked:** allow the source app to install unknown apps, or use `adb install -r` from a computer with USB debugging enabled.
 
-## 15. Platform support boundaries
+## 15. Optional LiteRT-LM CLI
+
+Install LiteRT-LM inside the MOJO AGENT virtual environment with ` .\\scripts\\install_litertlm.ps1 ` on Windows or ` ./scripts/install_litertlm.sh ` on Linux/macOS/Termux. Check with `mojo-agent litertlm status`. See [LITERTLM.md](LITERTLM.md) for run, benchmark, settings and API examples. This CLI runs on the backend host; it is not bundled in the Android APK.
+
+## 16. Platform support boundaries
 
 The supported reference backend is Python. The React dashboard is a browser app. The native Android app is a Kotlin client. Windows, Linux and macOS use the same Python and Node installers; Android can run the backend through Termux. There is no native iOS app, no native Windows executable installer, and no production-hardened remote server configuration in this release. Mojo compiler integration remains experimental and is not required.
