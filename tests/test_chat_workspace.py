@@ -71,7 +71,7 @@ def test_chat_attachment_size_type_and_text_extraction(tmp_path, monkeypatch):
 
 def test_chat_settings_validation():
     client = TestClient(api.app, client=("127.0.0.1", 51002))
-    assert client.post("/api/v1/settings/validate", json={"chat_default_mode": "litertlm"}).status_code == 200
+    assert client.post("/api/v1/settings/validate", json={"chat_default_mode": "litertlm", "litertlm_enabled": True}).status_code == 200
     assert client.post("/api/v1/settings/validate", json={"chat_default_mode": "cloud"}).status_code == 400
     assert client.post("/api/v1/settings/validate", json={"chat_max_history": 99}).status_code == 422
 
