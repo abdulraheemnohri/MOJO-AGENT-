@@ -111,10 +111,15 @@ class GitHubExtensionRegistry:
 
     def list(self, kind=None):
         with self.db() as conn:
-            if kind: rows=conn.execute("SELECT id,kind,name,description,version,repo,ref,manifest_sha256,installed_at FROM installed_extensions WHERE kind=? ORDER BY name",(kind,)).fetchall()
-            else: rows=conn.execute("SELECT id,kind,name,description,version,repo,ref,manifest_sha256,installed_at FROM installed_extensions ORDER BY kind,name").fetchall()
-        keys=("id","kind","name","description","version","repository","ref","manifest_sha256","installed_at")
-        return [dict(zip(keys,row)) for row in rows]
+            if kind: rows=conn.execute("SELECT id,kind,name,description,version,repo,ref,manifest_sha256,installed_at,manifest_json FROM installed_extensions WHERE kind=? ORDER BY name",(kind,)).fetchall()
+            else: rows=conn.execute("SELECT id,kind,name,description,version,repo,ref,manifest_sha256,installed_at,manifest_json FROM installed_extensions ORDER BY kind,name").fetchall()
+        keys=("id","kind","name","description","version","repository","ref","manifest_sha256","installed_at","manifest_json")
+        items=[]
+        for row in rows:
+            item=dict(zip(keys,row)); manifest=json.loads(item.pop("manifest_json"))
+            item["allowed_tools"]=manifest.get("tools",[]) if item["kind"]=="skill" else [manifest.get("operation")]
+            items.append(item)
+        return items]
 
     def uninstall(self, ident):
         with self.db() as conn: cur=conn.execute("DELETE FROM installed_extensions WHERE id=?",(ident,))
