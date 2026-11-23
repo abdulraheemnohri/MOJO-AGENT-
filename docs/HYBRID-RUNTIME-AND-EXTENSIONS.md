@@ -40,7 +40,17 @@ chmod +x scripts/install_litertlm.sh
 ./scripts/install_litertlm.sh
 ```
 
-These scripts install the optional CLI into the existing MOJO virtual environment. They do not download a model. Model downloads can be large and need network access/storage. A local `.litertlm` file runs without network once downloaded. The Android APK does not bundle the CLI or model; LiteRT-LM runs on the machine hosting the Python backend.
+These scripts install the native `litert-lm` runner into the existing MOJO virtual environment for local `.litertlm` bundles. They do not download a model. Model downloads can be large and need network access/storage. A local `.litertlm` file runs without network once downloaded. The Android APK does not bundle the CLI or model; inference runs on the machine hosting the Python backend.
+
+### Hugging Face repository IDs
+
+For a Hugging Face `owner/repository` ID, MOJO uses the official LiteRT CLI wrapper (`litert lm`) because it resolves repository IDs and handles cached conversion. Install the wrapper separately in a Python 3.13 environment as documented by Google:
+
+```powershell
+py -3.13 -m pip install --upgrade litert-cli-nightly
+```
+
+Set `MOJO_LITERT_CLI_BIN` to the full path of the `litert` executable if it is not on the backend process PATH. Local bundle inference continues to use `litert-lm` and does not require the wrapper. If the wrapper is not installed, MOJO returns a clear setup error instead of invoking the native CLI with incomplete Hugging Face arguments.
 
 ## API
 

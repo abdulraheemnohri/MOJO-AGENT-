@@ -35,14 +35,31 @@ def test_cli_missing(monkeypatch):
     with pytest.raises(LiteRTLMError): LiteRTLM().run("org/model","hello",approved=True)
 
 
-def test_hugging_face_repo_id_passed_directly_to_cli(monkeypatch):
-    monkeypatch.setattr("mojo_agent.litertlm.shutil.which",lambda _: "/usr/bin/litert-lm")
+def test_hugging_face_repo_id_uses_litert_wrapper(monkeypatch):
+    monkeypatch.setattr("mojo_agent.litertlm.shutil.which",lambda name: "/usr/bin/litert" if name=="litert" else None)
     seen={}
     class Result: returncode=0;stdout="answer";stderr=""
     def fake(command,**kwargs): seen["command"]=command;return Result()
     monkeypatch.setattr("mojo_agent.litertlm.subprocess.run",fake)
     result=LiteRTLM().run("Qwen/Qwen3-0.6B","hello",approved=True)
     assert result["model_source"]=="huggingface"
-    assert "Qwen/Qwen3-0.6B" in seen["command"]
-    assert not any("from-huggingface-repo" in item for item in seen["command"])
-    assert not any(item.endswith(".litertlm") for item in seen["command"])
+    assert seen["command"][:4]==["/usr/bin/litert","lm","run","Qwen/Qwen3-0.6B"]
+    assert "--prompt=hello" in seen["command"]
+
+
+def test_hugging_face_benchmark_uses_litert_wrapper(monkeypatch):
+    monkeypatch.setattr("mojo_agent.litertlm.shutil.which",lambda name: "/usr/bin/litert" if name=="litert" else None)
+    seen={}
+    class Result: returncode=0;stdout="benchmark";stderr=""
+    def fake(command,**kwargs): seen["command"]=command;return Result()
+    monkeypatch.setattr("mojo_agent.litertlm.subprocess.run",fake)
+    result=LiteRTLM().benchmark("org/model",approved=True)
+    assert result["model_source"]=="huggingface"
+    assert seen["command"]==["/usr/bin/litert","lm","benchmark","org/model"]
+
+
+def test_hugging_face_requires_wrapper_not_native_cli(monkeypatch):
+    monkeypatch.setattr("mojo_agent.litertlm.shutil.which",lambda name: "/usr/bin/litert-lm" if name=="litert-lm" else None)
+    with pytest.raises(LiteRTLMError,match="LiteRT CLI wrapper"):
+        LiteRTLM().run("org/model","hello",approved=True)
+

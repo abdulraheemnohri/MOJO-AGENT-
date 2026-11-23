@@ -15,10 +15,40 @@ from .settings import SettingsStore
 from .extensions import GitHubExtensionRegistry, ExtensionError
 from .agent_runtime import AgentRuntime
 from .litertlm import LiteRTLM, LiteRTLMError
-import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress
+from .database import DatabaseManager
+import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress,secrets
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
-app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
-memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
+app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type','Authorization','X-Backup-SHA256'])
+memory=MemoryStore();database=DatabaseManager(str(memory.path));database.migrate();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
+WORKER_STOP=threading.Event()
+WORKER_THREAD=None
+WORKER_ID="mojo-background-worker"
+
+def _worker_loop():
+ while not WORKER_STOP.is_set():
+  try:
+   prefs=settings.get()
+   if prefs.get('worker_enabled'):
+    workflows.worker_tick(tools,WORKER_ID,limit=prefs.get('worker_batch_size',3))
+   WORKER_STOP.wait(max(1,min(60,int(prefs.get('worker_poll_seconds',2)))))
+  except Exception as exc:
+   _record_runtime_log('ERROR','Background worker cycle failed: '+str(exc)[:200])
+   WORKER_STOP.wait(2)
+
+@app.on_event("startup")
+def start_background_worker():
+ global WORKER_THREAD
+ workflows.recover_interrupted()
+ if WORKER_THREAD is None or not WORKER_THREAD.is_alive():
+  WORKER_STOP.clear()
+  WORKER_THREAD=threading.Thread(target=_worker_loop,name=WORKER_ID,daemon=True)
+  WORKER_THREAD.start()
+
+@app.on_event("shutdown")
+def stop_background_worker():
+ WORKER_STOP.set()
+ if WORKER_THREAD and WORKER_THREAD.is_alive():WORKER_THREAD.join(timeout=3)
+
 
 def _record_runtime_log(level,message,method=None,path=None,status=None,duration_ms=None):
  entry={'time':time.time(),'level':level,'message':message,'method':method,'path':path,'status':status,'duration_ms':duration_ms}
@@ -32,16 +62,56 @@ class QInput(BaseModel):q:float;reward:float;next_max:float=0;alpha:float=Field(
 class WorkflowInput(BaseModel):name:str=Field(min_length=1,max_length=120);steps:list[dict]=Field(min_length=1,max_length=50)
 class ScheduleInput(BaseModel):workflow_id:str;interval_seconds:int=Field(ge=60,le=2592000)
 class ScheduleEnabledInput(BaseModel):enabled:bool
+class WorkflowEnqueueInput(BaseModel):max_attempts:int|None=Field(default=None,ge=1,le=10)
+class WorkerTickInput(BaseModel):limit:int=Field(default=5,ge=1,le=10);worker_id:str=Field(default='manual-worker',min_length=1,max_length=80)
 class NodeInput(BaseModel):label:str=Field(min_length=1,max_length=300);kind:str='concept';properties:dict={}
 class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weight:float=Field(default=1,ge=0,le=100)
 class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
-class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None;runtime_mode:str|None=None;litertlm_enabled:bool|None=None;litertlm_backend:str|None=None;litertlm_timeout_seconds:int|None=Field(default=None,ge=10,le=180);litertlm_model:str|None=None
+class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None;runtime_mode:str|None=None;litertlm_enabled:bool|None=None;litertlm_backend:str|None=None;litertlm_timeout_seconds:int|None=Field(default=None,ge=10,le=180);litertlm_model:str|None=None;worker_enabled:bool|None=None;worker_poll_seconds:int|None=Field(default=None,ge=1,le=60);worker_batch_size:int|None=Field(default=None,ge=1,le=10);workflow_max_attempts:int|None=Field(default=None,ge=1,le=10)
 class ApprovalInput(BaseModel):approved:bool
 class AgentRunInput(BaseModel):goal:str=Field(min_length=1,max_length=2000);mode:str|None=None;model:str|None=None;backend:str|None=None;approved:bool=False
 class GitHubExtensionInput(BaseModel):repository:str=Field(min_length=3,max_length=205);ref:str='main';manifest_path:str='mojo-extension.json'
 class GitHubInstallInput(GitHubExtensionInput):expected_sha256:str=Field(min_length=64,max_length=64)
 class InstalledToolInput(BaseModel):arguments:dict={};approved:bool=False
 class SkillExecutionInput(BaseModel):operation:str=Field(min_length=1,max_length=40);arguments:dict={};approved:bool=False
+AUTH_EXEMPT_PATHS={'/api/v1/health','/api/v1/security/status','/api/v1/security/token/bootstrap'}
+
+def _request_is_loopback(request):
+ try:return ipaddress.ip_address(request.client.host).is_loopback
+ except (ValueError,AttributeError):return False
+
+@app.middleware("http")
+async def enforce_api_token(request,call_next):
+ path=request.url.path
+ if request.method!='OPTIONS' and path.startswith('/api/v1/') and path not in AUTH_EXEMPT_PATHS and settings.auth_status()['enabled']:
+  header=request.headers.get('authorization','')
+  token=header[7:].strip() if header.lower().startswith('bearer ') else ''
+  if not settings.verify_api_token(token):
+   return Response(content='{"detail":"A valid MOJO API bearer token is required"}',status_code=401,media_type='application/json',headers={'WWW-Authenticate':'Bearer'})
+ return await call_next(request)
+
+@app.post('/api/v1/security/token/bootstrap')
+def bootstrap_api_token(request:Request):
+ if not _request_is_loopback(request):raise HTTPException(403,'Initial API token setup is restricted to loopback clients')
+ if settings.auth_status()['enabled']:raise HTTPException(409,'API authentication is already enabled; use an authenticated token rotation')
+ token=settings.create_api_token()
+ _record_runtime_log('WARNING','Local API token created')
+ return {'token':token,'warning':'Copy this token now. It is shown only once; MOJO stores only a salted PBKDF2 hash.'}
+
+@app.post('/api/v1/security/token/rotate')
+def rotate_api_token(request:Request):
+ if not _request_is_loopback(request):raise HTTPException(403,'API token rotation is restricted to loopback clients')
+ token=settings.create_api_token()
+ _record_runtime_log('WARNING','Local API token rotated')
+ return {'token':token,'warning':'The previous token is invalid. Copy this token now; it is shown only once.'}
+
+@app.delete('/api/v1/security/token')
+def revoke_api_token(request:Request):
+ if not _request_is_loopback(request):raise HTTPException(403,'API token revocation is restricted to loopback clients')
+ result=settings.revoke_api_token()
+ _record_runtime_log('WARNING','Local API token revoked')
+ return result
+
 @app.middleware("http")
 async def collect_safe_analytics(request, call_next):
  started=time.perf_counter()
@@ -103,10 +173,48 @@ def runtime_status():
   integrity=conn.execute('PRAGMA quick_check').fetchone()[0]
   table_names={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
   counts={}
-  for table in ('memories','workflows','workflow_runs','workflow_schedules','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates','installed_extensions'):
+  for table in ('memories','workflows','workflow_runs','workflow_schedules','workflow_jobs','schema_migrations','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates','installed_extensions'):
    if table in table_names: counts[table]=conn.execute('SELECT COUNT(*) FROM "'+table+'"').fetchone()[0]
  schedules=workflows.list_schedules()
- return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':False,'execution_mode':'manual tick endpoint'},'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
+ return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':bool(settings.get()['worker_enabled'] and WORKER_THREAD and WORKER_THREAD.is_alive()),'execution_mode':'opt-in background worker or manual tick'},'worker':{'enabled':settings.get()['worker_enabled'],'thread_alive':bool(WORKER_THREAD and WORKER_THREAD.is_alive()),'queued':workflows.job_counts()['queued'],'running':workflows.job_counts()['running']},'schema':database.status(),'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
+@app.get('/api/v1/database/status')
+def database_status():return database.status()
+
+def _require_loopback(request:Request):
+ try:peer=ipaddress.ip_address(request.client.host if request.client else '')
+ except ValueError:raise HTTPException(403,'Database maintenance is available only to loopback clients')
+ if not peer.is_loopback:raise HTTPException(403,'Database maintenance is restricted to loopback clients')
+
+async def _read_limited_body(request:Request, max_bytes:int=128*1024*1024):
+ declared=request.headers.get('content-length')
+ if declared:
+  try:size=int(declared)
+  except ValueError:raise HTTPException(400,'Invalid Content-Length header')
+  if size<0 or size>max_bytes:raise HTTPException(413,'Backup exceeds the 128 MiB restore limit')
+ chunks=[];total=0
+ async for chunk in request.stream():
+  total+=len(chunk)
+  if total>max_bytes:raise HTTPException(413,'Backup exceeds the 128 MiB restore limit')
+  chunks.append(chunk)
+ return b''.join(chunks)
+
+@app.post('/api/v1/backup/inspect')
+async def inspect_database_backup(request:Request):
+ _require_loopback(request)
+ payload=await _read_limited_body(request)
+ try:return database.inspect_payload(payload)
+ except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/v1/backup/restore')
+async def restore_database_backup(request:Request):
+ _require_loopback(request)
+ payload=await _read_limited_body(request)
+ try:
+  result=database.restore_payload(payload,request.headers.get('x-backup-sha256'))
+  _record_runtime_log('WARNING','Database restored from verified local backup')
+  return result
+ except ValueError as exc:raise HTTPException(400,str(exc))
+ except (OSError,sqlite3.Error) as exc:raise HTTPException(500,'Restore failed safely: '+str(exc)[:200])
 @app.get('/api/v1/backup/export')
 def export_database_backup(request:Request):
  try:
@@ -129,7 +237,7 @@ def export_database_backup(request:Request):
 @app.post('/api/v1/settings/validate')
 def validate_settings(req:SettingsInput):
  values=req.model_dump(exclude_unset=True)
- unsupported=set(values)-{'theme','tool_approval_required','runtime_mode','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds','litertlm_model'}
+ unsupported=set(values)-{'theme','tool_approval_required','runtime_mode','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds','litertlm_model','worker_enabled','worker_poll_seconds','worker_batch_size','workflow_max_attempts'}
  if unsupported: raise HTTPException(400,'These settings require a service restart or are not remotely editable: '+', '.join(sorted(unsupported)))
  if values.get('theme') not in (None,'dark','light','system'): raise HTTPException(400,'theme must be dark, light or system')
  if values.get('tool_approval_required') is False: raise HTTPException(400,'Tool approval is mandatory and cannot be disabled')
@@ -215,6 +323,44 @@ def execute_tool(req:ToolInput):
  except (ValueError,KeyError) as e:raise HTTPException(400,str(e))
 @app.get('/api/v1/workflows')
 def list_workflows():return {'items':workflows.list(),'history':workflows.history(),'schedules':workflows.list_schedules()}
+@app.get('/api/v1/workflow-jobs')
+def list_workflow_jobs(limit:int=100,status:str|None=None):
+ try:return {'items':workflows.list_jobs(limit,status),'worker':worker_status()}
+ except ValueError as exc:raise HTTPException(400,str(exc))
+@app.post('/api/v1/workflows/{workflow_id}/enqueue')
+def enqueue_workflow(workflow_id:str,req:WorkflowEnqueueInput):
+ try:
+  item=workflows.enqueue(workflow_id,req.max_attempts or settings.get()['workflow_max_attempts']);analytics.record('workflow_job_enqueued',{'job_id':item['id']})
+  return item
+ except KeyError as exc:raise HTTPException(404,str(exc))
+ except ValueError as exc:raise HTTPException(400,str(exc))
+@app.get('/api/v1/workflow-jobs/{job_id}')
+def get_workflow_job(job_id:str):
+ item=workflows.get_job(job_id)
+ if item is None:raise HTTPException(404,'Workflow job not found')
+ return item
+@app.post('/api/v1/workflow-jobs/{job_id}/cancel')
+def cancel_workflow_job(job_id:str):
+ item=workflows.cancel_job(job_id)
+ if item is None:raise HTTPException(404,'Workflow job not found')
+ return item
+@app.post('/api/v1/workflow-jobs/{job_id}/retry')
+def retry_workflow_job(job_id:str):
+ try:
+  item=workflows.retry_job(job_id)
+  if item is None:raise HTTPException(404,'Workflow job not found')
+  return item
+ except ValueError as exc:raise HTTPException(409,str(exc))
+@app.get('/api/v1/worker/status')
+def worker_status():
+ prefs=settings.get()
+ return {'enabled':prefs['worker_enabled'],'poll_seconds':prefs['worker_poll_seconds'],'batch_size':prefs['worker_batch_size'],
+  'thread_alive':bool(WORKER_THREAD and WORKER_THREAD.is_alive()),'processing_active':bool(prefs['worker_enabled'] and WORKER_THREAD and WORKER_THREAD.is_alive()),'worker_id':WORKER_ID,'queue':{
+   'queued':workflows.job_counts()['queued'],'running':workflows.job_counts()['running']}}
+@app.post('/api/v1/worker/tick')
+def worker_tick(req:WorkerTickInput):
+ try:return workflows.worker_tick(tools,req.worker_id,limit=req.limit)
+ except ValueError as exc:raise HTTPException(400,str(exc))
 @app.get('/api/v1/scheduler/schedules')
 def list_schedules():return {'items':workflows.list_schedules(),'max_schedules':100,'max_batch':10}
 @app.post('/api/v1/scheduler/schedules')
@@ -276,7 +422,7 @@ def diagnostics():
  graph_snapshot=knowledge.snapshot()
  return {'status':'ok','python':platform.python_version(),'platform':platform.platform(),'runtime':'python-reference','runtime_mode':settings.get()['runtime_mode'],'llm_enabled':False,'litertlm':agent_runtime.model_runtime.status(),'database':'sqlite','modules':{'memory_records':len(memory.search('',200)),'workflows':len(workflows.list()),'knowledge_nodes':len(graph_snapshot['nodes']),'knowledge_edges':len(graph_snapshot['edges']),'evolution_candidates':len(evolution_store.list_candidates(500)),'installed_extensions':len(extensions.list())},'limits':{'memory_search':200,'workflow_steps':50,'analytics_retention':analytics.retention},'safety':{'tool_approval_required':True,'shell_execution':False,'source_self_modification':False,'github_extension_code_execution':False}}
 @app.get('/api/v1/security/status')
-def security_status():return {'mode':'local-only','tool_allowlist':tools.list_tools(),'approval_required':settings.get()['tool_approval_required'],'shell_execution':False,'source_self_modification':False,'remote_access':'not configured'}
+def security_status():return {'mode':'local-first','tool_allowlist':tools.list_tools(),'approval_required':settings.get()['tool_approval_required'],'api_auth':settings.auth_status(),'shell_execution':False,'source_self_modification':False,'remote_access':'LAN access requires token authentication; use HTTPS termination before exposing beyond trusted networks'}
 @app.get('/api/v1/settings')
 def get_settings():return settings.get()
 @app.patch('/api/v1/settings')

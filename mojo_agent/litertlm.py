@@ -10,12 +10,16 @@ class LiteRTLMError(RuntimeError): pass
 class LiteRTLM:
     def __init__(self, executable=None, timeout_seconds=120):
         self.executable=executable or os.getenv("MOJO_LITERTLM_BIN","litert-lm")
+        self.wrapper_executable=os.getenv("MOJO_LITERT_CLI_BIN","litert")
         self.timeout_seconds=max(10,min(int(timeout_seconds),180))
     def status(self):
         resolved=shutil.which(self.executable)
-        return {"available":resolved is not None,"executable":resolved,"configured_executable":self.executable,
+        wrapper=shutil.which(self.wrapper_executable)
+        return {"available":resolved is not None or wrapper is not None,"executable":resolved,"configured_executable":self.executable,
+                "huggingface_wrapper":wrapper,"configured_wrapper":self.wrapper_executable,
+                "local_model_cli_available":resolved is not None,"huggingface_repo_cli_available":wrapper is not None,
                 "timeout_seconds":self.timeout_seconds,"supported_backends":["cpu","gpu"],
-                "install_command":"python -m pip install --upgrade litert-lm","enabled_by_default":False}
+                "install_command":"python -m pip install --upgrade litert-lm; optional Hugging Face repo resolver: python -m pip install litert-cli-nightly","enabled_by_default":False}
     @staticmethod
     def validate_model(model):
         value=(model or "").strip()
@@ -38,18 +42,27 @@ class LiteRTLM:
         if backend not in {"cpu","gpu"}: raise ValueError("backend must be cpu or gpu")
         prompt=(prompt or "").strip()
         if not prompt or len(prompt)>MAX_PROMPT: raise ValueError(f"prompt must contain 1 to {MAX_PROMPT} characters")
-        if not shutil.which(self.executable): raise LiteRTLMError("LiteRT-LM CLI not found. Install with: python -m pip install --upgrade litert-lm")
         value,is_hf=self.validate_model(model)
-        command=[self.executable,"run"]
-        command.append(value)
-        command += ["--backend="+backend,"--prompt="+prompt]
+        if is_hf:
+            wrapper=shutil.which(self.wrapper_executable)
+            if not wrapper:
+                raise LiteRTLMError("Hugging Face repository IDs require the LiteRT CLI wrapper. Install it with Python 3.13 using: pip install litert-cli-nightly. Alternatively download a .litertlm bundle and use its local path.")
+            command=[wrapper,"lm","run",value,"--backend="+backend,"--prompt="+prompt]
+        else:
+            if not shutil.which(self.executable): raise LiteRTLMError("LiteRT-LM CLI not found. Install with: python -m pip install --upgrade litert-lm")
+            command=[self.executable,"run",value,"--backend="+backend,"--prompt="+prompt]
         result=self._execute(command)
         return {**result,"model":value,"model_source":"huggingface" if is_hf else "local","backend":backend}
     def benchmark(self,model,approved=False):
         if not approved: raise PermissionError("LiteRT-LM benchmark requires explicit operator approval")
-        if not shutil.which(self.executable): raise LiteRTLMError("LiteRT-LM CLI not found. Install with: python -m pip install --upgrade litert-lm")
         value,is_hf=self.validate_model(model)
-        command=[self.executable,"benchmark"]
-        command.append(value)
+        if is_hf:
+            wrapper=shutil.which(self.wrapper_executable)
+            if not wrapper:
+                raise LiteRTLMError("Hugging Face repository IDs require the LiteRT CLI wrapper. Install it with Python 3.13 using: pip install litert-cli-nightly. Alternatively download a .litertlm bundle and use its local path.")
+            command=[wrapper,"lm","benchmark",value]
+        else:
+            if not shutil.which(self.executable): raise LiteRTLMError("LiteRT-LM CLI not found. Install with: python -m pip install --upgrade litert-lm")
+            command=[self.executable,"benchmark",value]
         result=self._execute(command)
-        return {**result,"model":value}
+        return {**result,"model":value,"model_source":"huggingface" if is_hf else "local"}
