@@ -44,3 +44,15 @@
 - SQLite stores bounded skill execution history with status and input shape/length metadata; raw input text is not persisted.
 - Web and Android clients expose skill operation execution and history.
 - LiteRT-LM passes Hugging Face repository IDs directly to the CLI rather than guessing a model artifact filename.
+
+
+### Durable workflow engine and database recovery (feature branch; CI pending)
+- Added a persistent SQLite job queue with workflow-step snapshots, bounded queue capacity, attempt counters, exponential retry delay and per-job status/result history.
+- Added cancellation for queued jobs and cooperative cancellation checks between running workflow steps.
+- Added worker claim locking, bounded worker batches, interrupted-job recovery on backend startup and an opt-in background daemon.
+- Added worker settings: enabled flag, polling interval, batch size and default retry attempts.
+- Added job queue/status/cancel/retry/manual worker APIs and dashboard + Android workflow controls.
+- Added SQLite schema version tracking and idempotent migration metadata.
+- Added loopback-only backup inspection and restore with integrity checks, optional SHA-256 verification, size cap, pre-restore safety backup and WAL handling.
+- Added database status and restore controls to the web settings page and schema diagnostics to Android.
+- Remote authentication/TLS, distributed queue coordination, forced interruption of a currently executing step and production multi-process database operation remain out of scope.
