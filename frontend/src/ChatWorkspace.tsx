@@ -98,8 +98,9 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
   if(!active){setNotice('Create or select a conversation first.');return}
   setBusy(true);setNotice('');
   try{
-   const args=toolName==='calculator'?{expression:toolInput}:{text:toolInput};
-   await call('/chat/conversations/'+active+'/tools/execute',{name:skillName?skillOperation:toolName,arguments:args,approved:toolApproval,skill_name:skillName||undefined});
+   const operation=skillName?skillOperation:toolName;
+   const args=operation==='calculator'?{expression:toolInput}:{text:toolInput};
+   await call('/chat/conversations/'+active+'/tools/execute',{name:operation,arguments:args,approved:toolApproval,skill_name:skillName||undefined});
    setToolApproval(false);await Promise.all([refreshMessages(active),refreshSessions()]);
    setNotice('Approved tool operation completed.');
   }catch(e:any){setNotice(e.message)}finally{setBusy(false)}
