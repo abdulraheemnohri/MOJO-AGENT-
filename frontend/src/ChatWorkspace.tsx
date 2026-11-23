@@ -28,7 +28,7 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
  const [showTools,setShowTools]=useState(false);
  const [systemPrompt,setSystemPrompt]=useState('');
  const [maxHistory,setMaxHistory]=useState(12);
- const [settingsOpen,setSettingsOpen]=useState(false);
+ const [settingsOpen,setSettingsOpen]=useState(false);\n const [newModelLabel,setNewModelLabel]=useState('My local model');\n const [newModelId,setNewModelId]=useState('');\n const [newModelBackend,setNewModelBackend]=useState('cpu');
  const bottom=useRef<HTMLDivElement>(null);
  const url=apiBase.replace(/\/$/,'');
  const headers=useMemo(()=>({'Content-Type':'application/json',...(apiToken?{Authorization:'Bearer '+apiToken}:{})}),[apiToken]);
@@ -105,6 +105,24 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
    setNotice('Approved tool operation completed.');
   }catch(e:any){setNotice(e.message)}finally{setBusy(false)}
  };
+ const addModel=async()=>{
+  setBusy(true);setNotice('');
+  try{await call('/chat/models',{label:newModelLabel,model_id:newModelId,backend:newModelBackend});setNewModelId('');await refreshCatalog();setNotice('Model added to the local catalog. No model files were downloaded.')}
+  catch(e:any){setNotice(e.message)}finally{setBusy(false)}
+ };
+ const selectDefaultModel=async(modelId:string)=>{
+  const item=(models.items||[]).find((m:any)=>m.model_id===modelId);
+  if(!item?.id||item.id==='algorithms')return;
+  setBusy(true);try{await call('/chat/models/'+item.id+'/select',{},'POST');setModel(modelId);await refreshCatalog();setNotice('Default local model selected. Enable LiteRT-LM in Runtime & Models if it is not already enabled.')}
+  catch(e:any){setNotice(e.message)}finally{setBusy(false)}
+ };
+ const removeModel=async(modelId:string)=>{
+  const item=(models.items||[]).find((m:any)=>m.model_id===modelId);
+  if(!item?.id)return;
+  if(!confirm('Remove this model from the catalog? Model files on disk will not be deleted.'))return;
+  setBusy(true);try{await call('/chat/models/'+item.id,undefined,'DELETE');await refreshCatalog();if(model===modelId)setModel('');setNotice('Model removed from catalog; model files were left untouched.')}
+  catch(e:any){setNotice(e.message)}finally{setBusy(false)}
+ };
  const saveChatSettings=async()=>{
   setBusy(true);try{
    await call('/settings',{chat_system_prompt:systemPrompt,chat_max_history:maxHistory},'PATCH');
@@ -133,7 +151,7 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
     {mode==='litertlm'&&<><label>Model<select value={model} onChange={e=>setModel(e.target.value)}><option value="">Use configured model</option>{availableModels.filter((m:any)=>m.mode==='litertlm').map((m:any)=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label><label>Backend<select value={backend} onChange={e=>setBackend(e.target.value)}><option value="cpu">CPU</option><option value="gpu">GPU</option></select></label></>}
     <span className="chat-safety"><ShieldCheck size={14}/> Tools never auto-run</span>
    </div>
-   {settingsOpen&&<div className="chat-settings-panel"><label>System instructions<textarea value={systemPrompt} maxLength={2000} onChange={e=>setSystemPrompt(e.target.value)}/></label><label>History messages<select value={maxHistory} onChange={e=>setMaxHistory(Number(e.target.value))}>{[4,8,12,16,20,24,30].map(n=><option key={n} value={n}>{n}</option>)}</select></label><button className="primary" onClick={saveChatSettings} disabled={busy}>Save chat settings</button></div>}
+   {settingsOpen&&<div className="chat-settings-panel"><label>System instructions<textarea value={systemPrompt} maxLength={2000} onChange={e=>setSystemPrompt(e.target.value)}/></label><label>History messages<select value={maxHistory} onChange={e=>setMaxHistory(Number(e.target.value))}>{[4,8,12,16,20,24,30].map(n=><option key={n} value={n}>{n}</option>)}</select></label><button className="primary" onClick={saveChatSettings} disabled={busy}>Save chat settings</button><div className="chat-model-manager"><b>Local model catalog</b><small>Add a local .litertlm file path or Hugging Face owner/repository ID. Adding an entry does not download weights.</small><label>Display name<input value={newModelLabel} onChange={e=>setNewModelLabel(e.target.value)} maxLength={100}/></label><label>Model path or repository ID<input value={newModelId} onChange={e=>setNewModelId(e.target.value)} placeholder="C:\\models\\model.litertlm or org/model"/></label><label>Default backend<select value={newModelBackend} onChange={e=>setNewModelBackend(e.target.value)}><option value="cpu">CPU</option><option value="gpu">GPU</option></select></label><button className="secondary" disabled={busy||!newModelLabel.trim()||!newModelId.trim()} onClick={addModel}>Add model</button><div className="chat-model-catalog">{(models.items||[]).filter((m:any)=>m.mode==='litertlm').map((m:any)=><div key={m.model_id} className="chat-model-entry"><span><b>{m.name}</b><small>{m.model_id} · {m.available?'CLI available':'CLI/model unavailable'}</small></span><div><button className="secondary" disabled={busy} onClick={()=>selectDefaultModel(m.model_id)}>Set default</button><button className="chat-delete" disabled={busy} onClick={()=>removeModel(m.model_id)}>×</button></div></div>)}</div></div></div>}
    {notice&&<div className="chat-notice">{notice}</div>}
    <div className="chat-message-list">
     {!messages.length&&<div className="chat-empty"><div className="chat-empty-icon"><Bot size={30}/></div><h3>Start a conversation with MOJO</h3><p>Use Algorithms mode without a model, or enable LiteRT-LM for local model chat. Attach files and run tools only after explicit approval.</p><div className="chat-suggestions">{['Explain how this project works','Create a step-by-step implementation plan','Review this text for errors'].map(s=><button key={s} className="secondary" onClick={()=>setDraft(s)}>{s}</button>)}</div></div>}
