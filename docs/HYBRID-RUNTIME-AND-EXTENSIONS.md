@@ -108,3 +108,14 @@ A GitHub skill is stored as instructions and a list of allowed built-in tools. A
 - Review manifest content and repository ownership before installation.
 
 This is a controlled declarative extension system, not a general-purpose plugin runtime.
+
+
+## Skill execution engine
+
+An installed skill may invoke only the built-in operations declared in its JSON manifest. The Android and web clients submit one operation at a time; the backend validates the skill allowlist and requires an explicit approval flag for every execution. No skill can run arbitrary repository code, shell commands, Python modules or network actions.
+
+New endpoints:
+- `POST /api/v1/skills/{name}/execute` — operation, arguments and explicit approval
+- `GET /api/v1/skills/{name}/history` — bounded execution history (maximum 100 records)
+
+Execution history records the operation, status, timestamp and input shape/length metadata rather than storing raw input text. The immediate execution response contains the operation result. An operation outside the skill's allowlist is rejected.
