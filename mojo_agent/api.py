@@ -480,10 +480,10 @@ def validate_settings(req:SettingsInput):
  if values.get('litertlm_enabled') not in (None,True,False): raise HTTPException(400,'litertlm_enabled must be boolean')
  if values.get('litertlm_backend') not in (None,'cpu','gpu'): raise HTTPException(400,'litertlm_backend must be cpu or gpu')
  if values.get('litertlm_timeout_seconds') is not None and (not isinstance(values['litertlm_timeout_seconds'],int) or not 10<=values['litertlm_timeout_seconds']<=180): raise HTTPException(400,'litertlm_timeout_seconds must be between 10 and 180')
-  if values.get('chat_default_mode') not in (None,'algorithms','litertlm'):raise HTTPException(400,'chat_default_mode must be algorithms or litertlm')
-  if values.get('chat_default_mode')=='litertlm' and not values.get('litertlm_enabled',settings.get()['litertlm_enabled']):raise HTTPException(400,'Enable LiteRT-LM before selecting it as the default chat mode')
-  if values.get('chat_system_prompt') is not None and (not isinstance(values['chat_system_prompt'],str) or len(values['chat_system_prompt'])>2000):raise HTTPException(400,'chat_system_prompt must be a string up to 2000 characters')
-  if values.get('chat_max_history') is not None and (not isinstance(values['chat_max_history'],int) or not 2<=values['chat_max_history']<=30):raise HTTPException(400,'chat_max_history must be 2-30')
+ if values.get('chat_default_mode') not in (None,'algorithms','litertlm'):raise HTTPException(400,'chat_default_mode must be algorithms or litertlm')
+ if values.get('chat_default_mode')=='litertlm' and not values.get('litertlm_enabled',settings.get()['litertlm_enabled']):raise HTTPException(400,'Enable LiteRT-LM before selecting it as the default chat mode')
+ if values.get('chat_system_prompt') is not None and (not isinstance(values['chat_system_prompt'],str) or len(values['chat_system_prompt'])>2000):raise HTTPException(400,'chat_system_prompt must be a string up to 2000 characters')
+ if values.get('chat_max_history') is not None and (not isinstance(values['chat_max_history'],int) or not 2<=values['chat_max_history']<=30):raise HTTPException(400,'chat_max_history must be 2-30')
  return {'valid':True,'accepted_fields':sorted(values),'restart_required':False,'protected_invariants':{'tool_approval_required':True,'llm_enabled':False,'source_self_modification':False}}
 def _discover_ipv4_addresses():
  addresses=[]
