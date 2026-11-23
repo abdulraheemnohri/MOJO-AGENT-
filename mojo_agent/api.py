@@ -80,6 +80,7 @@ class ChatConversationInput(BaseModel):title:str=Field(default='New chat',max_le
 class ChatConversationUpdate(BaseModel):title:str|None=Field(default=None,max_length=120);mode:str|None=None;model:str|None=None;system_prompt:str|None=Field(default=None,max_length=2000);archived:bool|None=None
 class ChatSendInput(BaseModel):content:str=Field(default='',max_length=20000);mode:str|None=None;model:str|None=None;backend:str|None=None;approved:bool=False;attachments:list[str]=Field(default_factory=list,max_length=10)
 class ChatToolInput(BaseModel):name:str=Field(min_length=1,max_length=48);arguments:dict={};approved:bool=False;skill_name:str|None=None
+class ChatModelInput(BaseModel):label:str=Field(min_length=1,max_length=100);model_id:str=Field(min_length=1,max_length=512);backend:str='cpu'
 from typing import Literal
 class LiteRTLMRunInput(BaseModel):
     model: str = Field(min_length=1, max_length=512)
@@ -185,10 +186,44 @@ def litertlm_benchmark(req:LiteRTLMBenchmarkInput):
 def chat_models():
  prefs=settings.get();runtime=agent_runtime.model_runtime.status()
  items=[{'id':'algorithms','name':'MOJO Algorithms','provider':'builtin','mode':'algorithms','available':True,'requires_approval':False}]
- if prefs.get('litertlm_enabled'):
-  configured=prefs.get('litertlm_model','')
-  items.append({'id':configured or 'litertlm-configure-model','name':configured or 'Configure local model','provider':'litertlm','mode':'litertlm','available':bool(runtime.get('available') and configured),'requires_approval':True,'backends':runtime.get('supported_backends',['cpu'])})
- return {'items':items,'default_mode':prefs.get('chat_default_mode','algorithms'),'runtime':runtime,'remote_providers_enabled':False,'note':'This build supports the built-in deterministic mode and optional local LiteRT-LM. No cloud provider API keys are used.'}
+ saved=chat_store.list_models()
+ configured=prefs.get('litertlm_model','')
+ for item in saved:
+  try:
+   _,is_hf=LiteRTLM.validate_model(item['model_id'])
+   available=bool(runtime.get('huggingface_repo_cli_available') if is_hf else runtime.get('local_model_cli_available'))
+  except ValueError:available=False
+  items.append({**item,'id':item['model_id'],'name':item['label'],'provider':'litertlm','mode':'litertlm','available':available,'requires_approval':True})
+ if configured and not any(item.get('model_id')==configured for item in saved):
+  try:
+   _,is_hf=LiteRTLM.validate_model(configured)
+   available=bool(runtime.get('huggingface_repo_cli_available') if is_hf else runtime.get('local_model_cli_available'))
+  except ValueError:available=False
+  items.append({'id':configured,'model_id':configured,'name':configured,'provider':'litertlm','mode':'litertlm','available':available,'requires_approval':True})
+ return {'items':items,'default_mode':prefs.get('chat_default_mode','algorithms'),'configured_model':configured,'runtime_enabled':prefs.get('litertlm_enabled',False),'runtime':runtime,'remote_providers_enabled':False,'note':'Algorithms and local LiteRT-LM are supported. Cloud provider API keys are not used.'}
+
+@app.post('/api/v1/chat/models')
+def add_chat_model(req:ChatModelInput):
+ try:
+  value,is_hf=LiteRTLM.validate_model(req.model_id)
+  item=chat_store.add_model(req.label,value,req.backend)
+  return {**item,'model_source':'huggingface' if is_hf else 'local','available':True}
+ except (ValueError,FileNotFoundError) as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/v1/chat/models/{catalog_id}/select')
+def select_chat_model(catalog_id:str):
+ item=chat_store.get_model(catalog_id)
+ if not item:raise HTTPException(404,'Chat model not found')
+ try:
+  LiteRTLM.validate_model(item['model_id'])
+  settings.update({'litertlm_model':item['model_id']})
+  return {'selected':True,'model':item,'runtime_enabled':settings.get()['litertlm_enabled']}
+ except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.delete('/api/v1/chat/models/{catalog_id}')
+def delete_chat_model(catalog_id:str):
+ if not chat_store.delete_model(catalog_id):raise HTTPException(404,'Chat model not found')
+ return {'deleted':True,'id':catalog_id}
 
 @app.get('/api/v1/chat/tools')
 def chat_tools():
