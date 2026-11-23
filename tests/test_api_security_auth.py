@@ -41,7 +41,7 @@ def test_auth_status_never_exposes_secret_material(tmp_path):
     store=SettingsStore(str(tmp_path/"auth-status.sqlite3"))
     token=store.create_api_token()
     status=store.auth_status()
-    assert status=={"enabled":True,"configured":True,"algorithm":"PBKDF2-HMAC-SHA256"}
+    assert status=={"enabled":True,"configured":True,"algorithm":"SHA-256 salted high-entropy token"}
     assert token not in str(status)
     assert store.verify_api_token(token)
     assert not store.verify_api_token("incorrect")
