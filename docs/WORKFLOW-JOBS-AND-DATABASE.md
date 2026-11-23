@@ -58,7 +58,7 @@ Restore constraints:
 
 ## Security boundaries
 
-- Workflow steps are declarative and limited to built-in `text`, `calculator`, `text_stats`, and `template` operations. A `template` step can map named inputs to results from earlier steps using `{{name}}` placeholders. Inputs must reference an earlier step index; forward references, complex expressions, and arbitrary code are rejected. Rendered output is capped at 10,000 characters.
+- Workflow steps are declarative and limited to built-in `text`, `calculator`, `text_stats`, and `template` operations. A `template` step can map named inputs to results from earlier steps using `{{name}}` placeholders. Inputs must reference an earlier step index; forward references, complex expressions, and arbitrary code are rejected. Rendered output is capped at 10,000 characters. Any step can also define a condition against one earlier step using `equals`, `not_equals`, `contains`, or `truthy`; a false condition records the step as `skipped` without executing it. Conditions and template mappings are validated at workflow creation/update and run identically in direct and queued execution.
 - No shell commands, Python source, arbitrary plugin code or remote execution.
 - Tool approval requirements are not configurable off.
 - API bearer-token authentication is optional but recommended for LAN clients. Initial token setup, rotation and revocation are loopback-restricted. Do not expose the backend port directly to the public internet; configure HTTPS/TLS termination before any trusted remote access.
