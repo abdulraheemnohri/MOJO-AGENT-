@@ -50,7 +50,7 @@ Start `./scripts/run_termux_backend.sh`; in a second Termux session start `./scr
 
 ## Android native app
 
-The APK is a client, not a bundled Python server. Download the `mojo-agent-debug-apk` artifact from the [Android APK workflow](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/workflows/android-apk.yml).
+The APK is a client, not a bundled Python server. The native app includes a basic Chat tab with saved conversation switching, local model approval and approved built-in tools. Download the `mojo-agent-debug-apk` artifact from the [Android APK workflow](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/workflows/android-apk.yml).
 
 - Android emulator backend URL: `http://10.0.2.2:8766/api/v1`
 - USB: run `adb reverse tcp:8766 tcp:8766` and use `http://127.0.0.1:8766/api/v1`
@@ -59,6 +59,10 @@ The APK is a client, not a bundled Python server. Download the `mojo-agent-debug
 ## Capabilities
 
 - Deterministic goal planning and algorithm utilities
+- Persistent Chat Workspace with conversation history, local model catalog, system prompts and bounded context
+- Algorithms chat without an LLM and optional approval-gated LiteRT-LM model chat
+- Chat attachments (10 MiB per file) with UTF-8 text extraction for text/Markdown/JSON/CSV/log files
+- Chat-connected built-in tools, installed extension tools and skills; separate approval before every execution
 - Bounded evolutionary strategy optimization with validation and explicit approval
 - SQLite memory CRUD, search, import and export
 - Knowledge graph nodes, edges and search
@@ -75,6 +79,7 @@ The APK is a client, not a bundled Python server. Download the `mojo-agent-debug
 
 ## Project documentation
 
+- [Chat Workspace guide](docs/CHAT-WORKSPACE.md) — chat models, conversations, attachments, tools, skills, API and limitations
 - [Complete project guide](docs/PROJECT-GUIDE.md) — architecture, modules, API, platform setup, settings, safety and known gaps
 - [Installation guide](docs/INSTALLATION.md)
 - [Architecture](docs/ARCHITECTURE.md)
