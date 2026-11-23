@@ -28,9 +28,12 @@ The current main commit at the time of this check was `094bd0e53dbc9e51bffa1decf
 - Python job failed during test collection: `LiteRTLMRunInput` and `LiteRTLMBenchmarkInput` were referenced by API routes but had not been defined.
 - Frontend build passed.
 - Installer validation passed.
-- This defect is being corrected in the finalization branch, with regression tests. Do not treat the failing main commit as release-verified.
+- Follow-up PR #9 fixes the missing request schemas, adds regression tests and reconciles the stale project documentation.
+- PR #9 head `c63b14807758d503881ff8c8807bc9bd2ad97a42` passed fresh CI run [45125919085](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/runs/45125919085): Python **92 passed**, frontend build passed and installer validation passed.
+- The PR is open and not yet merged. The failing main commit remains the deployed branch state until that change is merged.
+- Android APK CI passed earlier on merge commit `30e56ee78d5858e74eb5776ae1f8a3e3bda87fbc`; PR #9 does not modify Android source or workflow files.
 
-After the fix is merged, run the complete Python, frontend, installer and Android workflows again. A successful build still does not replace physical-device testing or a real local LiteRT-LM inference test.
+After PR #9 is merged, verify CI on the new main commit. A successful build still does not replace physical-device testing or a real local LiteRT-LM inference test.
 
 ## Known limitations — intentionally not claimed as complete
 
