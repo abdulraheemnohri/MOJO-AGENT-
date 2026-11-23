@@ -133,6 +133,8 @@ async def inspect_database_backup(request:Request):
 @app.post('/api/v1/backup/restore')
 async def restore_database_backup(request:Request):
  _require_loopback(request)
+ declared=request.headers.get('content-length')
+ if declared and int(declared)>128*1024*1024:raise HTTPException(413,'Backup exceeds the 128 MiB restore limit')
  payload=await request.body()
  if len(payload)>128*1024*1024:raise HTTPException(413,'Backup exceeds the 128 MiB restore limit')
  try:
