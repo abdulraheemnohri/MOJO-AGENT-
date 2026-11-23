@@ -170,17 +170,63 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var workerPoll by remember { mutableStateOf("2") }
  var workerBatch by remember { mutableStateOf("3") }
  var jobId by remember { mutableStateOf("") }
- var maxAttempts by remember { mutableStateOf("3") }
+  var maxAttempts by remember { mutableStateOf("3") }
+  var chatConversationId by remember { mutableStateOf("") }
+  var chatMode by remember { mutableStateOf("algorithms") }
+  var chatDraft by remember { mutableStateOf("") }
+  var chatHistory by remember { mutableStateOf(listOf<Pair<String,String>>()) }
+  var chatApproval by remember { mutableStateOf(false) }
+  var chatToolName by remember { mutableStateOf("calculator") }
+  var chatToolInput by remember { mutableStateOf("2+2") }
+  var chatToolApproval by remember { mutableStateOf(false) }
+  var chatSystemPrompt by remember { mutableStateOf("You are MOJO AGENT, a careful local-first assistant. Never claim to execute tools; ask for approval.") }
+  var chatMaxHistory by remember { mutableStateOf("12") }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
- val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Runtime Logs", "Runtime & Models", "Extensions Hub", "Backend Control", "Settings")
+ val menuItems = listOf("Home", "Chat", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Runtime Logs", "Runtime & Models", "Extensions Hub", "Backend Control", "Settings")
  val compactNavigation = screenWidthDp < 600
- val bottomTabs = listOf("Home", "Planner", "Workflows", "Settings")
+  val bottomTabs = listOf("Home", "Chat", "Planner", "Settings")
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
   call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { val prefs = JSONObject(it); theme = prefs.optString("theme", theme); agentMode = prefs.optString("runtime_mode", agentMode); modelPath = prefs.optString("litertlm_model", modelPath); runtimeEnabled = prefs.optBoolean("litertlm_enabled", false); modelBackend = prefs.optString("litertlm_backend", modelBackend); modelTimeout = prefs.optInt("litertlm_timeout_seconds", 120).toString(); workerEnabled = prefs.optBoolean("worker_enabled", workerEnabled); workerPoll = prefs.optInt("worker_poll_seconds", 2).toString(); workerBatch = prefs.optInt("worker_batch_size", 3).toString(); maxAttempts = prefs.optInt("workflow_max_attempts", 3).toString() } catch (_: Exception) { } }; if (path == "/security/token/bootstrap" || path == "/security/token/rotate") { try { apiToken = JSONObject(it).optString("token", apiToken); if (apiToken.isNotBlank()) localPrefs.edit().putString("api_token", apiToken).apply() } catch (_: Exception) { } }; if (path == "/extensions/github/preview") { extensionPreviewed = !it.startsWith("HTTP"); try { manifestHash = JSONObject(it).optString("manifest_sha256", "") } catch (_: Exception) { manifestHash = "" } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
  }
+  fun refreshChatMessages(id: String) {
+   call(base, "/chat/conversations/$id/messages?limit=100", "GET", null) { raw ->
+    try {
+     val items = JSONObject(raw).optJSONArray("items") ?: JSONArray()
+     val parsed = mutableListOf<Pair<String,String>>()
+     for (i in 0 until items.length()) { val item = items.getJSONObject(i); parsed.add(item.optString("role") to item.optString("content")) }
+     chatHistory = parsed
+    } catch (_: Exception) { output = raw }
+   }
+  }
+  fun createChatConversation() {
+   busy = true
+   call(base, "/chat/conversations", "POST", JSONObject().put("mode", chatMode).put("model", modelPath).toString()) { raw ->
+    busy = false
+    try { val created = JSONObject(raw); val id = created.optString("id"); if (id.isBlank()) output = raw else { chatConversationId = id; chatHistory = emptyList(); refreshChatMessages(id) } } catch (_: Exception) { output = raw }
+   }
+  }
+  fun sendChatMessage() {
+   if (chatConversationId.isBlank() || chatDraft.isBlank()) return
+   busy = true
+   val payload = JSONObject().put("content", chatDraft).put("mode", chatMode).put("model", modelPath).put("backend", modelBackend).put("approved", chatApproval)
+   call(base, "/chat/conversations/$chatConversationId/send", "POST", payload.toString()) { raw ->
+    busy = false
+    if (raw.startsWith("HTTP") || raw.startsWith("Connection failed")) output = raw else { chatDraft = ""; chatApproval = false; refreshChatMessages(chatConversationId) }
+   }
+  }
+  fun executeChatTool() {
+   if (chatConversationId.isBlank()) return
+   val args = if (chatToolName == "calculator") JSONObject().put("expression", chatToolInput) else JSONObject().put("text", chatToolInput)
+   val payload = JSONObject().put("name", chatToolName).put("arguments", args).put("approved", chatToolApproval).put("tool_source", "builtin")
+   busy = true
+   call(base, "/chat/conversations/$chatConversationId/tools/execute", "POST", payload.toString()) { raw ->
+    busy = false
+    if (raw.startsWith("HTTP")) output = raw else { chatToolApproval = false; refreshChatMessages(chatConversationId) }
+   }
+  }
  val darkMode = !(theme == "light" || (theme == "system" && !isSystemInDarkTheme()))
  val palette = if (darkMode) darkColorScheme(
   primary = androidx.compose.ui.graphics.Color(0xFF72E2C2),
@@ -233,6 +279,43 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
   }
   servers.forEach { server -> OutlinedButton(onClick = { base = server; request("/health") }, modifier = Modifier.fillMaxWidth()) { Text("Use $server") } }
   when (tab) {
+    "Chat" -> {
+     Text("MOJO Chat Workspace", style = MaterialTheme.typography.titleLarge)
+     Text("Persistent local conversations · model inference and tools require explicit approval.", style = MaterialTheme.typography.bodySmall)
+     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedButton(onClick = { chatMode = "algorithms" }) { Text(if (chatMode == "algorithms") "✓ Algorithms" else "Algorithms") }
+      OutlinedButton(onClick = { chatMode = "litertlm" }) { Text(if (chatMode == "litertlm") "✓ LiteRT-LM" else "LiteRT-LM") }
+     }
+     Text("Model: " + if (modelPath.isBlank()) "Not configured" else modelPath, style = MaterialTheme.typography.bodySmall)
+     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(onClick = { createChatConversation() }, enabled = !busy && (chatMode == "algorithms" || (runtimeEnabled && modelPath.isNotBlank()))) { Text("New conversation") }
+      OutlinedButton(onClick = { if (chatConversationId.isNotBlank()) refreshChatMessages(chatConversationId) }, enabled = !busy && chatConversationId.isNotBlank()) { Text("Refresh") }
+     }
+     if (chatConversationId.isNotBlank()) Text("Conversation ID: " + chatConversationId.take(12), style = MaterialTheme.typography.labelSmall)
+     ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Text("Conversation", style = MaterialTheme.typography.titleMedium)
+      if (chatHistory.isEmpty()) Text("No messages yet. Start by sending a prompt.", style = MaterialTheme.typography.bodySmall)
+      chatHistory.forEach { (role, content) -> Surface(color = if (role == "user") MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp)) { Text(role.uppercase(), style = MaterialTheme.typography.labelSmall); Text(content, style = MaterialTheme.typography.bodySmall) } } }
+     } }
+     OutlinedTextField(chatDraft, { chatDraft = it }, label = { Text("Message MOJO AGENT") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 5)
+     if (chatMode == "litertlm") {
+      Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve local inference for this message", Modifier.weight(1f)); Switch(checked = chatApproval, onCheckedChange = { chatApproval = it }) }
+      Text("Local inference requires LiteRT-LM enabled, a configured model and explicit approval.", style = MaterialTheme.typography.bodySmall)
+     }
+     Button(onClick = { sendChatMessage() }, enabled = !busy && chatConversationId.isNotBlank() && chatDraft.isNotBlank() && (chatMode == "algorithms" || (runtimeEnabled && modelPath.isNotBlank() && chatApproval)), modifier = Modifier.fillMaxWidth()) { Text("Send message") }
+     Divider()
+     Text("Chat tools", style = MaterialTheme.typography.titleMedium)
+     Text("Tool execution is separate from model output. Approve each exact operation.", style = MaterialTheme.typography.bodySmall)
+     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("calculator", "text_stats").forEach { name -> FilterChip(selected = chatToolName == name, onClick = { chatToolName = name; chatToolInput = if (name == "calculator") "2+2" else "" }, label = { Text(name) }) } }
+     OutlinedTextField(chatToolInput, { chatToolInput = it }, label = { Text(if (chatToolName == "calculator") "Expression" else "Text to analyze") }, modifier = Modifier.fillMaxWidth())
+     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve this chat tool operation", Modifier.weight(1f)); Switch(checked = chatToolApproval, onCheckedChange = { chatToolApproval = it }) }
+     Button(onClick = { executeChatTool() }, enabled = !busy && chatConversationId.isNotBlank() && chatToolApproval && chatToolInput.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Execute approved tool") }
+     Divider()
+     Text("Chat preferences", style = MaterialTheme.typography.titleMedium)
+     OutlinedTextField(chatSystemPrompt, { chatSystemPrompt = it }, label = { Text("System instructions") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+     OutlinedTextField(chatMaxHistory, { chatMaxHistory = it }, label = { Text("Context messages (2–30)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+     OutlinedButton(onClick = { request("/settings", "PATCH", JSONObject().put("chat_system_prompt", chatSystemPrompt).put("chat_max_history", chatMaxHistory.toIntOrNull() ?: 12).toString()) }, enabled = !busy && (chatMaxHistory.toIntOrNull() ?: 0) in 2..30) { Text("Save chat preferences") }
+    }
    "Backend Control" -> {
     Text("Backend control centre", style = MaterialTheme.typography.titleLarge)
     Text("Inspect the API, discover LAN interfaces, and review runtime configuration. Process start/stop is managed by the host operating system.")
