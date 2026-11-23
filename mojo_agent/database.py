@@ -12,7 +12,8 @@ class DatabaseManager:
     REQUIRED_TABLES = {
         "app_settings", "memories", "workflows", "workflow_runs", "workflow_schedules",
         "workflow_jobs", "analytics_events", "kg_nodes", "kg_edges",
-        "evolution_candidates", "evolution_state", "installed_extensions", "skill_executions",\n        
+        "evolution_candidates", "evolution_state", "installed_extensions", "skill_executions",
+
     }
     def __init__(self, path="data/mojo_agent.sqlite3"):
         self.path = str(path)
