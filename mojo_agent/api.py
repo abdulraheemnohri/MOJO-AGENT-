@@ -16,10 +16,11 @@ from .extensions import GitHubExtensionRegistry, ExtensionError
 from .agent_runtime import AgentRuntime
 from .litertlm import LiteRTLM, LiteRTLMError
 from .database import DatabaseManager
+from .chat import ChatStore, MAX_ATTACHMENT_BYTES
 import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress,secrets
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type','Authorization','X-Backup-SHA256'])
-memory=MemoryStore();database=DatabaseManager(str(memory.path));database.migrate();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));litertlm=agent_runtime.model_runtime;candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
+memory=MemoryStore();database=DatabaseManager(str(memory.path));database.migrate();chat_store=ChatStore(str(memory.path));evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));litertlm=agent_runtime.model_runtime;candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
 WORKER_STOP=threading.Event()
 WORKER_THREAD=None
 WORKER_ID="mojo-background-worker"
@@ -67,13 +68,17 @@ class WorkerTickInput(BaseModel):limit:int=Field(default=5,ge=1,le=10);worker_id
 class NodeInput(BaseModel):label:str=Field(min_length=1,max_length=300);kind:str='concept';properties:dict={}
 class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weight:float=Field(default=1,ge=0,le=100)
 class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
-class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None;runtime_mode:str|None=None;litertlm_enabled:bool|None=None;litertlm_backend:str|None=None;litertlm_timeout_seconds:int|None=Field(default=None,ge=10,le=180);litertlm_model:str|None=None;worker_enabled:bool|None=None;worker_poll_seconds:int|None=Field(default=None,ge=1,le=60);worker_batch_size:int|None=Field(default=None,ge=1,le=10);workflow_max_attempts:int|None=Field(default=None,ge=1,le=10)
+class SettingsInput(BaseModel):theme:str|None=None;api_host:str|None=None;api_port:int|None=Field(default=None,ge=1024,le=65535);tool_approval_required:bool|None=None;runtime_mode:str|None=None;litertlm_enabled:bool|None=None;litertlm_backend:str|None=None;litertlm_timeout_seconds:int|None=Field(default=None,ge=10,le=180);litertlm_model:str|None=None;worker_enabled:bool|None=None;worker_poll_seconds:int|None=Field(default=None,ge=1,le=60);worker_batch_size:int|None=Field(default=None,ge=1,le=10);workflow_max_attempts:int|None=Field(default=None,ge=1,le=10);chat_default_mode:str|None=None;chat_system_prompt:str|None=Field(default=None,max_length=2000);chat_max_history:int|None=Field(default=None,ge=2,le=30)
 class ApprovalInput(BaseModel):approved:bool
 class AgentRunInput(BaseModel):goal:str=Field(min_length=1,max_length=2000);mode:str|None=None;model:str|None=None;backend:str|None=None;approved:bool=False
 class GitHubExtensionInput(BaseModel):repository:str=Field(min_length=3,max_length=205);ref:str='main';manifest_path:str='mojo-extension.json'
 class GitHubInstallInput(GitHubExtensionInput):expected_sha256:str=Field(min_length=64,max_length=64)
 class InstalledToolInput(BaseModel):arguments:dict={};approved:bool=False
 class SkillExecutionInput(BaseModel):operation:str=Field(min_length=1,max_length=40);arguments:dict={};approved:bool=False
+class ChatConversationInput(BaseModel):title:str=Field(default='New chat',max_length=120);mode:str|None=None;model:str|None=None
+class ChatConversationUpdate(BaseModel):title:str|None=Field(default=None,max_length=120);mode:str|None=None;model:str|None=None;system_prompt:str|None=Field(default=None,max_length=2000);archived:bool|None=None
+class ChatSendInput(BaseModel):content:str=Field(default='',max_length=20000);mode:str|None=None;model:str|None=None;backend:str|None=None;approved:bool=False;attachments:list[str]=Field(default_factory=list,max_length=10)
+class ChatToolInput(BaseModel):name:str=Field(min_length=1,max_length=48);arguments:dict={};approved:bool=False;skill_name:str|None=None
 from typing import Literal
 class LiteRTLMRunInput(BaseModel):
     model: str = Field(min_length=1, max_length=512)
@@ -174,7 +179,157 @@ def litertlm_benchmark(req:LiteRTLMBenchmarkInput):
  except PermissionError as exc:raise HTTPException(403,str(exc))
  except ValueError as exc:raise HTTPException(400,str(exc))
  except LiteRTLMError as exc:raise HTTPException(503,str(exc))
+
+@app.get('/api/v1/chat/models')
+def chat_models():
+ prefs=settings.get();runtime=agent_runtime.model_runtime.status()
+ items=[{'id':'algorithms','name':'MOJO Algorithms','provider':'builtin','mode':'algorithms','available':True,'requires_approval':False}]
+ if prefs.get('litertlm_enabled'):
+  configured=prefs.get('litertlm_model','')
+  items.append({'id':configured or 'litertlm-configure-model','name':configured or 'Configure local model','provider':'litertlm','mode':'litertlm','available':bool(runtime.get('available') and configured),'requires_approval':True,'backends':runtime.get('supported_backends',['cpu'])})
+ return {'items':items,'default_mode':prefs.get('chat_default_mode','algorithms'),'runtime':runtime,'remote_providers_enabled':False,'note':'This build supports the built-in deterministic mode and optional local LiteRT-LM. No cloud provider API keys are used.'}
+
+@app.get('/api/v1/chat/tools')
+def chat_tools():
+ return {'built_in':tools.list_tools(),'installed_tools':extensions.list('tool'),'skills':extensions.list('skill'),'approval_required':True,'automatic_tool_execution':False}
+
+@app.post('/api/v1/chat/conversations')
+def create_chat_conversation(req:ChatConversationInput):
+ prefs=settings.get();mode=req.mode or prefs.get('chat_default_mode','algorithms')
+ if mode not in {'algorithms','litertlm'}:raise HTTPException(400,'mode must be algorithms or litertlm')
+ if mode=='litertlm' and not prefs.get('litertlm_enabled'):raise HTTPException(403,'Enable LiteRT-LM in Runtime & Models before creating a model chat')
+ try:return chat_store.create(req.title,mode,req.model or prefs.get('litertlm_model',''))
+ except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.get('/api/v1/chat/conversations')
+def list_chat_conversations(limit:int=50,include_archived:bool=False):
+ return {'items':chat_store.list(limit,include_archived)}
+
+@app.get('/api/v1/chat/conversations/{conversation_id}')
+def get_chat_conversation(conversation_id:str):
+ item=chat_store.get(conversation_id)
+ if not item:raise HTTPException(404,'Conversation not found')
+ return {**item,'attachments':chat_store.list_attachments(conversation_id)}
+
+@app.patch('/api/v1/chat/conversations/{conversation_id}')
+def update_chat_conversation(conversation_id:str,req:ChatConversationUpdate):
+ try:
+  item=chat_store.update(conversation_id,**req.model_dump(exclude_unset=True,exclude_none=True))
+  if not item:raise HTTPException(404,'Conversation not found')
+  return item
+ except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.delete('/api/v1/chat/conversations/{conversation_id}')
+def delete_chat_conversation(conversation_id:str):
+ if not chat_store.delete(conversation_id):raise HTTPException(404,'Conversation not found')
+ return {'deleted':True,'id':conversation_id}
+
+@app.get('/api/v1/chat/conversations/{conversation_id}/messages')
+def list_chat_messages(conversation_id:str,limit:int=100,before:float|None=None):
+ items=chat_store.messages(conversation_id,limit,before)
+ if items is None:raise HTTPException(404,'Conversation not found')
+ return {'items':items,'count':len(items)}
+
+@app.delete('/api/v1/chat/conversations/{conversation_id}/messages')
+def clear_chat_messages(conversation_id:str):
+ count=chat_store.clear_messages(conversation_id)
+ if count is None:raise HTTPException(404,'Conversation not found')
+ return {'deleted':count}
+
+@app.post('/api/v1/chat/conversations/{conversation_id}/attachments')
+async def upload_chat_attachment(conversation_id:str,request:Request,filename:str):
+ if not chat_store.get(conversation_id):raise HTTPException(404,'Conversation not found')
+ chunks=[];total=0
+ async for chunk in request.stream():
+  total+=len(chunk)
+  if total>MAX_ATTACHMENT_BYTES:raise HTTPException(413,'Attachment exceeds 10 MiB')
+  chunks.append(chunk)
+ try:
+  item=chat_store.add_attachment(conversation_id,filename,request.headers.get('content-type','application/octet-stream'),b''.join(chunks))
+  analytics.record('chat_attachment_added',{'extension':item['extension'],'size_bytes':item['size_bytes']})
+  return item
+ except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.get('/api/v1/chat/conversations/{conversation_id}/attachments')
+def list_chat_attachments(conversation_id:str):
+ if not chat_store.get(conversation_id):raise HTTPException(404,'Conversation not found')
+ return {'items':chat_store.list_attachments(conversation_id)}
+
+@app.get('/api/v1/chat/attachments/{attachment_id}')
+def download_chat_attachment(attachment_id:str):
+ item=chat_store.attachment_bytes(attachment_id)
+ if not item:raise HTTPException(404,'Attachment not found')
+ safe_name=Path(item['filename']).name.replace('"','_')
+ return Response(content=item['content'],media_type=item['content_type'],headers={'Content-Disposition':f'attachment; filename="{safe_name}"','X-Content-Type-Options':'nosniff'})
+
+@app.post('/api/v1/chat/conversations/{conversation_id}/send')
+def send_chat_message(conversation_id:str,req:ChatSendInput):
+ conversation=chat_store.get(conversation_id)
+ if not conversation:raise HTTPException(404,'Conversation not found')
+ prefs=settings.get();mode=req.mode or conversation['mode'] or prefs.get('chat_default_mode','algorithms')
+ if mode not in {'algorithms','litertlm'}:raise HTTPException(400,'mode must be algorithms or litertlm')
+ if mode=='litertlm' and not prefs.get('litertlm_enabled'):raise HTTPException(403,'LiteRT-LM is disabled in Runtime & Models')
+ content=req.content.strip()
+ if not content and not req.attachments:raise HTTPException(400,'Enter a message or attach a file')
+ if not content:content='Please review the attached file(s).'
+ try:attachment_context=chat_store.text_for_attachments(conversation_id,req.attachments)
+ except ValueError as exc:raise HTTPException(400,str(exc))
+ try:
+  chat_store.update(conversation_id,mode=mode,model=req.model or conversation['model'])
+  user_message=chat_store.add_message(conversation_id,'user',content,{'attachments':attachment_context})
+  history=chat_store.messages(conversation_id,prefs.get('chat_max_history',12)+1) or []
+  if mode=='algorithms':
+   tasks=decompose_goal(content)
+   order=topological_order({task['id']:task['depends_on'] for task in tasks})
+   lines=['MOJO AGENT is using deterministic Algorithms mode. No language model was called.','']
+   lines.extend([f"{index+1}. {task['title']}" for index,task in enumerate(tasks)])
+   lines.extend(['','Execution order: '+', '.join(order) if order else 'Execution order: none','Tools are not run automatically. Open Chat Tools and approve an individual operation when needed.'])
+   for attachment in attachment_context:
+    lines.append(f"Attachment: {attachment['filename']}. "+("UTF-8 text is available as context." if attachment['extracted_text'] else "This file is stored, but this runtime cannot inspect its contents."))
+   answer='\n'.join(lines)
+   assistant=chat_store.add_message(conversation_id,'assistant',answer,{'mode':mode,'model':None,'tasks':tasks,'execution':'not automatic'})
+  else:
+   model=req.model or conversation['model'] or prefs.get('litertlm_model','')
+   if not model:raise HTTPException(400,'Select a local .litertlm model or Hugging Face model ID in Runtime & Models')
+   if not req.approved:raise HTTPException(403,'Model inference requires checking the per-message approval box')
+   system_prompt=conversation.get('system_prompt') or prefs.get('chat_system_prompt','You are MOJO AGENT. Be honest and do not claim to execute tools.')
+   transcript=[]
+   for message in history:
+    if message['role'] in {'user','assistant'}:
+     transcript.append(message['role'].upper()+': '+message['content'])
+   for attachment in attachment_context:
+    if attachment['extracted_text']:transcript.append('ATTACHMENT '+attachment['filename']+': '+attachment['extracted_text'])
+   prompt=(system_prompt+'\n\nConversation:\n'+'\n'.join(transcript)+'\nASSISTANT:')
+   prompt=prompt[-5900:]
+   try:
+    result=agent_runtime.model_runtime.run(model,prompt,backend=req.backend or prefs.get('litertlm_backend','cpu'),approved=True)
+   except (LiteRTLMError,ValueError,OSError) as exc:raise HTTPException(503,'Local model request failed: '+str(exc)[:300])
+   answer=result.get('output','').strip() or '[The local model returned an empty response.]'
+   assistant=chat_store.add_message(conversation_id,'assistant',answer,{'mode':mode,'model':model,'backend':req.backend or prefs.get('litertlm_backend','cpu'),'model_source':result.get('model_source')})
+  analytics.record('chat_message_sent',{'mode':mode,'has_attachments':bool(req.attachments)})
+  return {'user_message':user_message,'assistant_message':assistant,'conversation':chat_store.get(conversation_id),'model_mode':mode}
+ except HTTPException:raise
+ except (ValueError,KeyError) as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/v1/chat/conversations/{conversation_id}/tools/execute')
+def execute_chat_tool(conversation_id:str,req:ChatToolInput):
+ if not chat_store.get(conversation_id):raise HTTPException(404,'Conversation not found')
+ if not req.approved:raise HTTPException(403,'Approve this exact tool operation before execution')
+ try:
+  if req.skill_name:
+   result=extensions.execute_skill(req.skill_name,req.name,req.arguments,True)
+  else:
+   result={'status':'completed','result':tools.execute(req.name,req.arguments,True)}
+  rendered=json.dumps(result,ensure_ascii=False,default=str)
+  message=chat_store.add_message(conversation_id,'tool',rendered,{'tool':req.name,'skill':req.skill_name,'approved':True})
+  analytics.record('chat_tool_executed',{'tool':req.name,'skill':bool(req.skill_name)})
+  return {'result':result,'message':message}
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except KeyError:raise HTTPException(404,'Skill or tool not found')
+ except (ValueError,ExtensionError) as exc:raise HTTPException(400,str(exc))
+
 @app.get('/api/v1/health')
+
 def health():return {'status':'ok','name':'MOJO AGENT','version':'0.9.0','llm':'disabled','runtime':'python-reference','platform':'cross-platform'}
 @app.get('/api/v1/runtime/status')
 def runtime_status():
@@ -248,7 +403,7 @@ def export_database_backup(request:Request):
 @app.post('/api/v1/settings/validate')
 def validate_settings(req:SettingsInput):
  values=req.model_dump(exclude_unset=True)
- unsupported=set(values)-{'theme','tool_approval_required','runtime_mode','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds','litertlm_model','worker_enabled','worker_poll_seconds','worker_batch_size','workflow_max_attempts'}
+ unsupported=set(values)-{'theme','tool_approval_required','runtime_mode','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds','litertlm_model','worker_enabled','worker_poll_seconds','worker_batch_size','workflow_max_attempts','chat_default_mode','chat_system_prompt','chat_max_history'}
  if unsupported: raise HTTPException(400,'These settings require a service restart or are not remotely editable: '+', '.join(sorted(unsupported)))
  if values.get('theme') not in (None,'dark','light','system'): raise HTTPException(400,'theme must be dark, light or system')
  if values.get('tool_approval_required') is False: raise HTTPException(400,'Tool approval is mandatory and cannot be disabled')
