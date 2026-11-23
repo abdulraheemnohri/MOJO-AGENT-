@@ -1,7 +1,7 @@
 """Safe local workflow registry and bounded deterministic runner."""
 import json,sqlite3,time,uuid
 from pathlib import Path
-ALLOWED_STEP_TYPES={"text","calculator","text_stats"}
+ALLOWED_STEP_TYPES={"text","calculator","text_stats","template"}
 MAX_TEXT=10000
 class WorkflowStore:
  def __init__(self,path="data/mojo_agent.sqlite3"):
@@ -21,11 +21,18 @@ class WorkflowStore:
  def _validate(self,name,steps):
   if not isinstance(name,str) or not name.strip() or len(name)>120:raise ValueError("workflow name must contain 1–120 characters")
   if not isinstance(steps,list) or not 1<=len(steps)<=50:raise ValueError("workflow needs 1–50 steps")
-  for s in steps:
+  for step_index,s in enumerate(steps):
    if not isinstance(s,dict) or s.get("type") not in ALLOWED_STEP_TYPES:raise ValueError("unsupported workflow step")
-   key={"text":"value","calculator":"expression","text_stats":"text"}[s["type"]];v=s.get(key,"")
+   key={"text":"value","calculator":"expression","text_stats":"text","template":"template"}[s["type"]];v=s.get(key,"")
    if not isinstance(v,str) or len(v)> (200 if key=="expression" else MAX_TEXT):raise ValueError("workflow step input is invalid or too long")
    if key=="expression" and not v:raise ValueError("calculator expression cannot be empty")
+   if s["type"]=="template":
+    refs=s.get("inputs",{})
+    if not isinstance(refs,dict) or len(refs)>20:raise ValueError("template inputs must be an object with at most 20 entries")
+    import re
+    if any(not isinstance(name,str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}",name) for name in refs):raise ValueError("template input names must be simple identifiers")
+    for source in refs.values():
+     if not isinstance(source,int) or isinstance(source,bool) or source<0 or source>=step_index:raise ValueError("template inputs must reference an earlier step")
  def _row(self,r):return {"id":r[0],"name":r[1],"steps":json.loads(r[2]),"created":r[3],"updated":r[4]}
  def create(self,name,steps):
   self._validate(name,steps);ident,now=str(uuid.uuid4()),time.time()
@@ -54,6 +61,11 @@ class WorkflowStore:
     kind=s["type"]
     if kind=="text":result=s.get("value","")
     elif kind=="calculator":result=tools.execute(kind,{"expression":s["expression"]},approved=True)
+    elif kind=="template":
+     import re
+     values={name:results[index]["result"] for name,index in s.get("inputs",{}).items()}
+     result=re.sub(r"\{\{([A-Za-z][A-Za-z0-9_]*)\}\}",lambda match:str(values[match.group(1)]) if match.group(1) in values else match.group(0),s.get("template",""))
+     if len(result)>MAX_TEXT:raise ValueError("rendered template exceeds maximum length")
     else:result=tools.execute(kind,{"text":s.get("text","")},approved=True)
     results.append({"step":i,"type":kind,"result":result})
   except Exception as exc:status="failed";results.append({"step":len(results),"error":str(exc)[:500]})
@@ -198,6 +210,11 @@ class WorkflowStore:
    kind=step["type"]
    if kind=="text":result=step.get("value","")
    elif kind=="calculator":result=tools.execute(kind,{"expression":step["expression"]},approved=True)
+   elif kind=="template":
+    import re
+    values={name:results[index]["result"] for name,index in step.get("inputs",{}).items()}
+    result=re.sub(r"\{\{([A-Za-z][A-Za-z0-9_]*)\}\}",lambda match:str(values[match.group(1)]) if match.group(1) in values else match.group(0),step.get("template",""))
+    if len(result)>MAX_TEXT:raise ValueError("rendered template exceeds maximum length")
    else:result=tools.execute(kind,{"text":step.get("text","")},approved=True)
    results.append({"step":index,"type":kind,"result":result})
   return results
