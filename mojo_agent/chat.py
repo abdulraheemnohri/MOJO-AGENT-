@@ -35,6 +35,9 @@ class ChatStore:
                 size_bytes INTEGER NOT NULL, content BLOB NOT NULL, created_at REAL NOT NULL)""")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id,created_at)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC)")
+            conn.execute("""CREATE TABLE IF NOT EXISTS chat_models(
+                id TEXT PRIMARY KEY, label TEXT NOT NULL, model_id TEXT NOT NULL UNIQUE,
+                backend TEXT NOT NULL DEFAULT 'cpu', added_at REAL NOT NULL)""")
             conn.execute("PRAGMA foreign_keys=ON")
 
     def connect(self):
@@ -50,6 +53,30 @@ class ChatStore:
         try: item["metadata"] = json.loads(item.get("metadata") or "{}")
         except json.JSONDecodeError: item["metadata"] = {}
         return item
+
+
+    def add_model(self, label, model_id, backend="cpu"):
+        label=(label or "").strip()[:100]
+        model_id=(model_id or "").strip()
+        if not label or not model_id or len(model_id)>512: raise ValueError("label and valid model identifier are required")
+        if backend not in {"cpu","gpu"}: raise ValueError("backend must be cpu or gpu")
+        ident=uuid.uuid4().hex
+        with self.connect() as conn:
+            try: conn.execute("INSERT INTO chat_models(id,label,model_id,backend,added_at) VALUES(?,?,?,?,?)",(ident,label,model_id,backend,time.time()))
+            except sqlite3.IntegrityError as exc: raise ValueError("this model is already in the catalog") from exc
+        return self.get_model(ident)
+
+    def list_models(self):
+        with self.connect() as conn: rows=conn.execute("SELECT * FROM chat_models ORDER BY added_at DESC").fetchall()
+        return [dict(row) for row in rows]
+
+    def get_model(self, model_id):
+        with self.connect() as conn: row=conn.execute("SELECT * FROM chat_models WHERE id=?",(model_id,)).fetchone()
+        return dict(row) if row else None
+
+    def delete_model(self, model_id):
+        with self.connect() as conn: cur=conn.execute("DELETE FROM chat_models WHERE id=?",(model_id,))
+        return cur.rowcount>0
 
     def create(self, title="New chat", mode="algorithms", model=""):
         if mode not in {"algorithms", "litertlm"}: raise ValueError("mode must be algorithms or litertlm")
