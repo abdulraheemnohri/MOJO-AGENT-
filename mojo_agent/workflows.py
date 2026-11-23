@@ -33,6 +33,25 @@ class WorkflowStore:
     if any(not isinstance(name,str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}",name) for name in refs):raise ValueError("template input names must be simple identifiers")
     for source in refs.values():
      if not isinstance(source,int) or isinstance(source,bool) or source<0 or source>=step_index:raise ValueError("template inputs must reference an earlier step")
+   condition=s.get("condition")
+   if condition is not None:
+    if not isinstance(condition,dict) or condition.get("operator") not in {"equals","not_equals","contains","truthy"}:raise ValueError("step condition is invalid")
+    source=condition.get("step")
+    if not isinstance(source,int) or isinstance(source,bool) or source<0 or source>=step_index:raise ValueError("step conditions must reference an earlier step")
+    if condition["operator"]!="truthy" and (not isinstance(condition.get("value"),str) or len(condition["value"])>MAX_TEXT):raise ValueError("condition value must be text up to 10,000 characters")
+
+ def _condition_matches(self,condition,results):
+  if condition is None:return True
+  source=results[condition["step"]]
+  if source.get("status")=="skipped":value=None
+  else:value=source.get("result")
+  op=condition["operator"];expected=condition.get("value","")
+  if op=="truthy":return bool(value)
+  actual=str(value) if value is not None else ""
+  if op=="equals":return actual==expected
+  if op=="not_equals":return actual!=expected
+  return expected in actual
+
  def _row(self,r):return {"id":r[0],"name":r[1],"steps":json.loads(r[2]),"created":r[3],"updated":r[4]}
  def create(self,name,steps):
   self._validate(name,steps);ident,now=str(uuid.uuid4()),time.time()
@@ -59,6 +78,9 @@ class WorkflowStore:
   try:
    for i,s in enumerate(w["steps"]):
     kind=s["type"]
+    if not self._condition_matches(s.get("condition"),results):
+     results.append({"step":i,"type":kind,"status":"skipped","result":None})
+     continue
     if kind=="text":result=s.get("value","")
     elif kind=="calculator":result=tools.execute(kind,{"expression":s["expression"]},approved=True)
     elif kind=="template":
@@ -67,7 +89,7 @@ class WorkflowStore:
      result=re.sub(r"\{\{([A-Za-z][A-Za-z0-9_]*)\}\}",lambda match:str(values[match.group(1)]) if match.group(1) in values else match.group(0),s.get("template",""))
      if len(result)>MAX_TEXT:raise ValueError("rendered template exceeds maximum length")
     else:result=tools.execute(kind,{"text":s.get("text","")},approved=True)
-    results.append({"step":i,"type":kind,"result":result})
+    results.append({"step":i,"type":kind,"status":"completed","result":result})
   except Exception as exc:status="failed";results.append({"step":len(results),"error":str(exc)[:500]})
   with self.db() as c:c.execute("INSERT INTO workflow_runs VALUES(?,?,?,?,?,?)",(rid,ident,status,json.dumps(results),started,time.time()))
   return {"id":rid,"workflow_id":ident,"status":status,"results":results}
@@ -208,6 +230,9 @@ class WorkflowStore:
     job=self.get_job(job_id)
     if not job or job["cancel_requested"]: raise InterruptedError("Job cancellation requested")
    kind=step["type"]
+   if not self._condition_matches(step.get("condition"),results):
+    results.append({"step":index,"type":kind,"status":"skipped","result":None})
+    continue
    if kind=="text":result=step.get("value","")
    elif kind=="calculator":result=tools.execute(kind,{"expression":step["expression"]},approved=True)
    elif kind=="template":
@@ -216,7 +241,7 @@ class WorkflowStore:
     result=re.sub(r"\{\{([A-Za-z][A-Za-z0-9_]*)\}\}",lambda match:str(values[match.group(1)]) if match.group(1) in values else match.group(0),step.get("template",""))
     if len(result)>MAX_TEXT:raise ValueError("rendered template exceeds maximum length")
    else:result=tools.execute(kind,{"text":step.get("text","")},approved=True)
-   results.append({"step":index,"type":kind,"result":result})
+   results.append({"step":index,"type":kind,"status":"completed","result":result})
   return results
  def claim_job(self,worker_id="local-worker",now=None):
   stamp=time.time() if now is None else float(now)
