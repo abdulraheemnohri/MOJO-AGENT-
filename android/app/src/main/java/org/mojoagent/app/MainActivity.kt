@@ -175,6 +175,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
   var chatMode by remember { mutableStateOf("algorithms") }
   var chatDraft by remember { mutableStateOf("") }
   var chatHistory by remember { mutableStateOf(listOf<Pair<String,String>>()) }
+  var chatSessions by remember { mutableStateOf(listOf<Pair<String,String>>()) }
   var chatApproval by remember { mutableStateOf(false) }
   var chatToolName by remember { mutableStateOf("calculator") }
   var chatToolInput by remember { mutableStateOf("2+2") }
@@ -199,6 +200,11 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
      for (i in 0 until items.length()) { val item = items.getJSONObject(i); parsed.add(item.optString("role") to item.optString("content")) }
      chatHistory = parsed
     } catch (_: Exception) { output = raw }
+   }
+  }
+  fun refreshChatSessions() {
+   call(base, "/chat/conversations?limit=50", "GET", null) { raw ->
+    try { val items = JSONObject(raw).optJSONArray("items") ?: JSONArray(); val parsed = mutableListOf<Pair<String,String>>(); for (i in 0 until items.length()) { val item = items.getJSONObject(i); parsed.add(item.optString("id") to item.optString("title")) }; chatSessions = parsed } catch (_: Exception) { output = raw }
    }
   }
   fun createChatConversation() {
@@ -290,6 +296,8 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       Button(onClick = { createChatConversation() }, enabled = !busy && (chatMode == "algorithms" || (runtimeEnabled && modelPath.isNotBlank()))) { Text("New conversation") }
       OutlinedButton(onClick = { if (chatConversationId.isNotBlank()) refreshChatMessages(chatConversationId) }, enabled = !busy && chatConversationId.isNotBlank()) { Text("Refresh") }
+     OutlinedButton(onClick = { refreshChatSessions() }, enabled = !busy) { Text("Saved chats") }
+     chatSessions.forEach { (id, title) -> OutlinedButton(onClick = { chatConversationId = id; refreshChatMessages(id) }, modifier = Modifier.fillMaxWidth()) { Text(title + " · " + id.take(8), maxLines = 1) } }
      }
      if (chatConversationId.isNotBlank()) Text("Conversation ID: " + chatConversationId.take(12), style = MaterialTheme.typography.labelSmall)
      ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
