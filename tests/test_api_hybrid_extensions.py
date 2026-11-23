@@ -40,3 +40,24 @@ def test_github_extension_install_preview_and_skill_run(monkeypatch,tmp_path):
         assert client.get("/api/v1/extensions?kind=skill").json()["items"][0]["name"]=="test-skill"
     finally:
         api.extensions=original
+
+
+def test_skill_execute_api_is_allowlisted_and_approval_gated(monkeypatch,tmp_path):
+    from mojo_agent.extensions import GitHubExtensionRegistry
+    original=api.extensions
+    registry=GitHubExtensionRegistry(str(tmp_path/"api-skills.db"))
+    skill={"schema":"mojo.extension.v1","kind":"skill","name":"api-skill","version":"1.0",
+           "description":"API skill","instructions":"Uppercase text","tools":["uppercase"]}
+    monkeypatch.setattr("mojo_agent.extensions._fetch_manifest",lambda *args:(skill,"f"*64))
+    try:
+        api.extensions=registry
+        registry.install("acme/demo","main","skill.json",expected_sha256="f"*64)
+        denied=client.post("/api/v1/skills/api-skill/execute",json={"operation":"uppercase","arguments":{"text":"hi"}})
+        assert denied.status_code==403
+        rejected=client.post("/api/v1/skills/api-skill/execute",json={"operation":"calculator","arguments":{"expression":"2+2"},"approved":True})
+        assert rejected.status_code==400
+        success=client.post("/api/v1/skills/api-skill/execute",json={"operation":"uppercase","arguments":{"text":"hi"},"approved":True})
+        assert success.status_code==200 and success.json()["result"]=="HI"
+        assert len(client.get("/api/v1/skills/api-skill/history").json()["items"])==1
+    finally:
+        api.extensions=original
