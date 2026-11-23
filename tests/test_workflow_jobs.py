@@ -101,3 +101,51 @@ def test_queued_job_executes_template_snapshot(tmp_path):
     finished=store.get_job(job["id"])
     assert finished["status"]=="completed"
     assert finished["result"][1]["result"]=="value=snapshot"
+
+
+def test_conditional_steps_skip_when_prior_result_does_not_match(tmp_path):
+    store=WorkflowStore(str(tmp_path/"conditions.db"))
+    workflow=store.create("conditional",[
+        {"type":"text","value":"production"},
+        {"type":"text","value":"deploy approved","condition":{"step":0,"operator":"equals","value":"staging"}},
+        {"type":"text","value":"manual review","condition":{"step":0,"operator":"not_equals","value":"production"}},
+        {"type":"text","value":"continue","condition":{"step":0,"operator":"contains","value":"prod"}}
+    ])
+    result=store.run(workflow["id"],ToolRegistry())
+    assert result["status"]=="completed"
+    assert [step["status"] for step in result["results"]]==["completed","skipped","skipped","completed"]
+    assert result["results"][1]["result"] is None
+    assert result["results"][3]["result"]=="continue"
+
+
+def test_conditional_steps_validate_prior_references_and_values(tmp_path):
+    store=WorkflowStore(str(tmp_path/"condition-validation.db"))
+    with pytest.raises(ValueError):
+        store.create("forward",[
+            {"type":"text","value":"x","condition":{"step":1,"operator":"truthy"}},
+            {"type":"text","value":"y"}
+        ])
+    with pytest.raises(ValueError):
+        store.create("bad-operator",[
+            {"type":"text","value":"x"},
+            {"type":"text","value":"y","condition":{"step":0,"operator":"eval","value":"x"}}
+        ])
+    with pytest.raises(ValueError):
+        store.create("bad-value",[
+            {"type":"text","value":"x"},
+            {"type":"text","value":"y","condition":{"step":0,"operator":"equals","value":5}}
+        ])
+
+
+def test_queued_job_runs_conditional_step_from_immutable_snapshot(tmp_path):
+    store=WorkflowStore(str(tmp_path/"queued-conditions.db"))
+    workflow=store.create("conditional queue",[
+        {"type":"text","value":"enabled"},
+        {"type":"text","value":"run","condition":{"step":0,"operator":"truthy"}}
+    ])
+    job=store.enqueue(workflow["id"],now=1)
+    store.update(workflow["id"],"changed",[{"type":"text","value":"new"}])
+    store.worker_tick(ToolRegistry(),now=2,limit=1)
+    finished=store.get_job(job["id"])
+    assert finished["status"]=="completed"
+    assert finished["result"][1]["status"]=="completed"
