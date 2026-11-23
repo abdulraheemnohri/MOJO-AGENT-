@@ -72,3 +72,14 @@ Install with `python -m pip install --upgrade litert-lm` inside the MOJO AGENT v
 ## Platform boundaries
 
 Python is the supported reference backend. React/Vite is the browser dashboard. Kotlin/Jetpack Compose is the Android client. Android can also host the backend via Termux. There is no native iOS client, Windows executable installer, or production-hardened remote server in this release. Mojo compiler integration remains experimental.
+
+
+## Optional hybrid runtime and GitHub extensions
+
+The default agent mode is deterministic **Algorithms**. Optional **Hybrid** and **LiteRT-LM** modes use the local LiteRT-LM CLI on the backend host; model inference requires explicit approval. See [Hybrid Runtime and Extensions](docs/HYBRID-RUNTIME-AND-EXTENSIONS.md).
+
+The dashboard and Android client include Runtime & Models and Extensions Hub screens. GitHub skills and tools install from public JSON manifests only. Arbitrary Python, shell scripts and binaries are never executed. Install scripts for the optional CLI:
+- Windows: `scripts/install_litertlm.ps1`
+- Linux/macOS/Termux: `scripts/install_litertlm.sh`
+
+Example declarative packages are in `examples/extensions/`. Pin a commit SHA and review the manifest hash before installation.

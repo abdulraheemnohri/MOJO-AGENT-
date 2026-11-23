@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -119,6 +120,7 @@ done(if (it.isSuccessful) text else "HTTP " + it.code + ": " + text)
 @Composable
 fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, discover: ((List<String>) -> Unit) -> Unit) {
  val context = LocalContext.current
+ val screenWidthDp = LocalConfiguration.current.screenWidthDp
  var base by remember { mutableStateOf(context.getSharedPreferences("mojo", Context.MODE_PRIVATE).getString("api_base", "http://10.0.2.2:8766/api/v1") ?: "http://10.0.2.2:8766/api/v1") }
  var tab by remember { mutableStateOf("Home") }
  var goal by remember { mutableStateOf("Create a project plan") }
@@ -141,15 +143,63 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var runtimeSummary by remember { mutableStateOf("Runtime metrics not loaded yet.") }
  var compactMode by remember { mutableStateOf(false) }
  var showAdvanced by remember { mutableStateOf(false) }
+ var agentMode by remember { mutableStateOf("algorithms") }
+ var modelPath by remember { mutableStateOf("") }
+ var modelApproval by remember { mutableStateOf(false) }
+ var githubRepo by remember { mutableStateOf("") }
+ var githubRef by remember { mutableStateOf("main") }
+ var manifestPath by remember { mutableStateOf("mojo-extension.json") }
+ var extensionPreviewed by remember { mutableStateOf(false) }
+ var manifestHash by remember { mutableStateOf("") }
+ var runtimeEnabled by remember { mutableStateOf(false) }
+ var modelBackend by remember { mutableStateOf("cpu") }
+ var modelTimeout by remember { mutableStateOf("120") }
+ var toolName by remember { mutableStateOf("calculator") }
+ var toolInput by remember { mutableStateOf("2+2") }
+ var toolApproval by remember { mutableStateOf(false) }
+ var extensionId by remember { mutableStateOf("") }
+ var skillName by remember { mutableStateOf("") }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
- val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Runtime Logs", "Backend Control", "Settings")
+ val menuItems = listOf("Home", "Planner", "Memory", "Workflows", "Evolution", "Knowledge", "Tools", "Analytics", "Security", "Diagnostics", "Runtime Logs", "Runtime & Models", "Extensions Hub", "Backend Control", "Settings")
+ val compactNavigation = screenWidthDp < 600
+ val bottomTabs = listOf("Home", "Planner", "Workflows", "Settings")
  fun request(path: String, method: String = "GET", json: String? = null) {
   busy = true
-  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { theme = JSONObject(it).optString("theme", theme) } catch (_: Exception) { } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
+  call(base, path, method, json) { output = it; if (path == "/settings" && method == "GET") { try { val prefs = JSONObject(it); theme = prefs.optString("theme", theme); agentMode = prefs.optString("runtime_mode", agentMode); modelPath = prefs.optString("litertlm_model", modelPath); runtimeEnabled = prefs.optBoolean("litertlm_enabled", false); modelBackend = prefs.optString("litertlm_backend", modelBackend); modelTimeout = prefs.optInt("litertlm_timeout_seconds", 120).toString() } catch (_: Exception) { } }; if (path == "/extensions/github/preview") { extensionPreviewed = !it.startsWith("HTTP"); try { manifestHash = JSONObject(it).optString("manifest_sha256", "") } catch (_: Exception) { manifestHash = "" } }; if (path == "/runtime/status") { try { val parsed = JSONObject(it); val db = parsed.optJSONObject("database"); runtimeSummary = "PID " + parsed.optInt("pid") + " · uptime " + parsed.optDouble("uptime_seconds") + "s · " + parsed.optInt("threads") + " threads · database " + (db?.optLong("size_bytes") ?: 0) + " bytes · integrity " + (db?.optString("integrity") ?: "unknown") } catch (_: Exception) { } }; busy = false }
  }
- MaterialTheme(colorScheme = if (theme == "light" || (theme == "system" && !isSystemInDarkTheme())) lightColorScheme() else darkColorScheme()) {
+ val darkMode = !(theme == "light" || (theme == "system" && !isSystemInDarkTheme()))
+ val palette = if (darkMode) darkColorScheme(
+  primary = androidx.compose.ui.graphics.Color(0xFF72E2C2),
+  onPrimary = androidx.compose.ui.graphics.Color(0xFF06251D),
+  secondary = androidx.compose.ui.graphics.Color(0xFF91BFFF),
+  background = androidx.compose.ui.graphics.Color(0xFF080F1B),
+  surface = androidx.compose.ui.graphics.Color(0xFF111D2D),
+  surfaceVariant = androidx.compose.ui.graphics.Color(0xFF1A2A40)
+ ) else lightColorScheme(
+  primary = androidx.compose.ui.graphics.Color(0xFF176B58),
+  secondary = androidx.compose.ui.graphics.Color(0xFF315F91),
+  background = androidx.compose.ui.graphics.Color(0xFFF3F6FA),
+  surface = androidx.compose.ui.graphics.Color(0xFFFFFFFF),
+  surfaceVariant = androidx.compose.ui.graphics.Color(0xFFE8EEF5)
+ )
+ MaterialTheme(colorScheme = palette) {
+ Scaffold(
+  containerColor = MaterialTheme.colorScheme.background,
+  bottomBar = {
+   if (compactNavigation) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+    bottomTabs.forEach { item ->
+     NavigationBarItem(
+      selected = tab == item,
+      onClick = { tab = item },
+      icon = { },
+      label = { Text(item, maxLines = 1, style = MaterialTheme.typography.labelSmall) }
+     )
+    }
+   }
+  }
+ ) { scaffoldPadding ->
  ModalNavigationDrawer(drawerState = drawerState, drawerContent = { ModalDrawerSheet {
   Text("MOJO AGENT", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(20.dp))
   Text("NAVIGATION", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
@@ -157,7 +207,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
   Divider(modifier = Modifier.padding(12.dp))
   Text("Local-first · protected core", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(20.dp))
  } }) {
- Column(Modifier.fillMaxSize().widthIn(max = 960.dp).verticalScroll(rememberScrollState()).padding(if (compactMode) 12.dp else 18.dp), verticalArrangement = Arrangement.spacedBy(if (compactMode) 8.dp else 12.dp)) {
+ Column(Modifier.fillMaxSize().widthIn(max = 1120.dp).padding(scaffoldPadding).verticalScroll(rememberScrollState()).padding(horizontal = if (compactMode) 12.dp else if (compactNavigation) 14.dp else 28.dp, vertical = if (compactMode) 10.dp else 22.dp), verticalArrangement = Arrangement.spacedBy(if (compactMode) 8.dp else 14.dp)) {
   Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
    TextButton(onClick = { scope.launch { drawerState.open() } }) { Text("☰ Menu") }
    Column(Modifier.weight(1f)) { Text("MOJO AGENT", style = MaterialTheme.typography.headlineMedium); Text("Algorithmic intelligence · local-first") }
@@ -270,8 +320,49 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    }
    "Tools" -> {
     Text("Allowlisted tools", style = MaterialTheme.typography.titleLarge)
-    Button(onClick = { request("/tools") }, enabled = !busy) { Text("Load available tools") }
-    Text("Tool execution requires explicit approval. Shell commands are not available.")
+    Text("Built-in and installed tools are approval-gated. Shell execution is not available.")
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+     listOf("calculator", "text_stats").forEach { name -> FilterChip(selected = toolName == name, onClick = { toolName = name; toolInput = if (name == "calculator") "2+2" else "" }, label = { Text(name) }) }
+    }
+    OutlinedTextField(toolInput, { toolInput = it }, label = { Text(if (toolName == "calculator") "Arithmetic expression" else "Text to analyze") }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve this execution", Modifier.weight(1f)); Switch(checked = toolApproval, onCheckedChange = { toolApproval = it }) }
+    Button(onClick = { val args = if (toolName == "calculator") JSONObject().put("expression", toolInput) else JSONObject().put("text", toolInput); request("/tools/execute", "POST", JSONObject().put("name", toolName).put("arguments", args).put("approved", toolApproval).toString()) }, enabled = !busy && toolApproval && toolInput.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Execute approved tool") }
+    OutlinedButton(onClick = { request("/tools") }, enabled = !busy) { Text("Refresh tool registry") }
+   }
+   "Runtime & Models" -> {
+    Text("Agent runtime", style = MaterialTheme.typography.titleLarge)
+    Text("Algorithms are always available. Local LiteRT-LM is optional and disabled until configured.")
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Enable LiteRT-LM", Modifier.weight(1f)); Switch(checked = runtimeEnabled, onCheckedChange = { runtimeEnabled = it }) }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+     listOf("algorithms", "hybrid", "litertlm").forEach { mode -> FilterChip(selected = agentMode == mode, onClick = { agentMode = mode }, label = { Text(mode) }) }
+    }
+    OutlinedTextField(modelPath, { modelPath = it }, label = { Text("Backend-host .litertlm path or Hugging Face owner/model") }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve local inference", Modifier.weight(1f)); Switch(checked = modelApproval, onCheckedChange = { modelApproval = it }) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Button(onClick = { request("/settings", "PATCH", JSONObject().put("runtime_mode", agentMode).put("litertlm_enabled", runtimeEnabled).put("litertlm_model", modelPath).put("litertlm_backend", modelBackend).put("litertlm_timeout_seconds", modelTimeout.toIntOrNull() ?: 120).toString()) }, enabled = !busy && (agentMode == "algorithms" || runtimeEnabled) && (modelTimeout.toIntOrNull() ?: 0) in 10..180) { Text("Save runtime config") }
+     OutlinedButton(onClick = { request("/settings") }, enabled = !busy) { Text("Load runtime settings") }
+     OutlinedButton(onClick = { request("/agent/runtime") }, enabled = !busy) { Text("Runtime status") }
+    }
+    Button(onClick = { request("/agent/run", "POST", JSONObject().put("goal", goal).put("mode", agentMode).put("model", modelPath).put("backend", modelBackend).put("approved", modelApproval).toString()) }, enabled = !busy && goal.isNotBlank() && (agentMode == "algorithms" || (runtimeEnabled && modelPath.isNotBlank() && modelApproval)), modifier = Modifier.fillMaxWidth()) { Text("Run agent") }
+    Text("Hybrid mode uses the deterministic plan as authority. Model output is advisory and cannot execute tools. Model inference requires explicit approval.", style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { request("/litertlm/status") }, enabled = !busy) { Text("LiteRT-LM runtime status") }
+    OutlinedButton(onClick = { request("/litertlm/benchmark", "POST", JSONObject().put("goal", "benchmark").put("model", modelPath).put("approved", modelApproval).toString()) }, enabled = !busy && runtimeEnabled && modelPath.isNotBlank() && modelApproval && (modelTimeout.toIntOrNull() ?: 0) in 10..180) { Text("Benchmark model") }
+   }
+   "Extensions Hub" -> {
+    Text("GitHub skills and tools", style = MaterialTheme.typography.titleLarge)
+    Text("Only declarative JSON manifests are installed. Repository code and shell scripts are never executed.")
+    OutlinedTextField(githubRepo, { githubRepo = it }, label = { Text("GitHub repository owner/name") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(githubRef, { githubRef = it }, label = { Text("Branch or tag") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(manifestPath, { manifestPath = it; extensionPreviewed = false; manifestHash = "" }, label = { Text("Manifest path") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick = { extensionPreviewed = false; manifestHash = ""; request("/extensions/github/preview", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).toString()) }, enabled = !busy && githubRepo.contains("/")) { Text("Preview") }
+     Button(onClick = { request("/extensions/github/install", "POST", JSONObject().put("repository", githubRepo).put("ref", githubRef).put("manifest_path", manifestPath).put("expected_sha256", manifestHash).toString()); extensionPreviewed = false }, enabled = !busy && extensionPreviewed) { Text("Install") }
+    }
+    OutlinedButton(onClick = { request("/extensions") }, enabled = !busy) { Text("List installed extensions") }
+    OutlinedTextField(extensionId, { extensionId = it }, label = { Text("Extension ID (skill:name or tool:name)") }, modifier = Modifier.fillMaxWidth())
+    OutlinedButton(onClick = { request("/extensions/$extensionId", "DELETE") }, enabled = !busy && extensionId.contains(":")) { Text("Uninstall extension") }
+    OutlinedTextField(skillName, { skillName = it }, label = { Text("Installed skill name") }, modifier = Modifier.fillMaxWidth())
+    Button(onClick = { request("/skills/$skillName/run", "POST", JSONObject().put("goal", goal).toString()) }, enabled = !busy && skillName.isNotBlank() && goal.isNotBlank()) { Text("Run skill plan") }
    }
    "Runtime Logs" -> {
     Text("Runtime event log", style = MaterialTheme.typography.titleLarge)
@@ -318,11 +409,12 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    }
   }
   if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-  Text("RESPONSE", style = MaterialTheme.typography.labelLarge)
+  Text("RESPONSE", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
   Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
    Text(output, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
   }
   }
+ }
  }
  }
  if (confirmApproval) AlertDialog(
