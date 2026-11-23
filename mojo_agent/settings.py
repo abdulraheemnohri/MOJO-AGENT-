@@ -7,12 +7,16 @@ class SettingsStore:
   self.path=path;Path(path).parent.mkdir(parents=True,exist_ok=True)
   with self.db() as c:c.execute('CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
  def db(self):return sqlite3.connect(self.path)
- def get(self):
+ def _get_raw(self):
   with self.db() as c:rows=c.execute('SELECT key,value FROM app_settings').fetchall()
   out=DEFAULTS.copy()
   for k,v in rows:
    try:out[k]=json.loads(v)
    except json.JSONDecodeError:continue
+  return out
+ def get(self):
+  out=self._get_raw()
+  out.pop('api_auth_hash',None);out.pop('api_auth_salt',None)
   return out
  def update(self,values):
   allowed={'theme','tool_approval_required','runtime_mode','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds','litertlm_model','worker_enabled','worker_poll_seconds','worker_batch_size','workflow_max_attempts'}
@@ -36,7 +40,7 @@ class SettingsStore:
   return self.get()
 
  def auth_status(self):
-  current=self.get()
+  current=self._get_raw()
   return {'enabled':bool(current.get('api_auth_enabled',False)),'configured':bool(current.get('api_auth_hash') and current.get('api_auth_salt')),'algorithm':'PBKDF2-HMAC-SHA256'}
 
  def create_api_token(self):
@@ -56,7 +60,7 @@ class SettingsStore:
 
  def verify_api_token(self,token):
   if not token:return False
-  current=self.get()
+  current=self._get_raw()
   if not current.get('api_auth_enabled'):return True
   salt=current.get('api_auth_salt');expected=current.get('api_auth_hash')
   if not salt or not expected:return False
