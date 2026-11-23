@@ -59,7 +59,7 @@ Base path: `/api/v1`
 | DELETE | `/chat/models/{id}` | Remove a model catalog entry (does not delete model files) |
 | GET/POST | `/chat/conversations` | List/create conversations |
 | GET/PATCH/DELETE | `/chat/conversations/{id}` | Read/update/delete a conversation |
-| GET/DELETE | `/chat/conversations/{id}/messages` | Read/clear conversation history |
+| GET/DELETE | `/chat/conversations/{id}/messages` | Read/clear conversation history and attachments |\n| GET | `/chat/conversations/{id}/export` | Export conversation, messages and attachment metadata as JSON |
 | POST | `/chat/conversations/{id}/send` | Save user message and generate deterministic or local-model response |
 | POST | `/chat/conversations/{id}/attachments?filename=...` | Upload an attachment as a raw request body |
 | GET | `/chat/conversations/{id}/attachments` | List conversation attachments |
