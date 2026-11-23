@@ -43,3 +43,13 @@ def test_queue_limits_and_invalid_filters(tmp_path):
     with pytest.raises(ValueError):store.enqueue(w["id"],max_attempts=11)
     with pytest.raises(ValueError):store.worker_tick(ToolRegistry(),limit=11)
     with pytest.raises(ValueError):store.list_jobs(status="bogus")
+
+
+def test_worker_tick_also_processes_due_schedules(tmp_path):
+    store=WorkflowStore(str(tmp_path/"jobs.db"))
+    workflow=store.create("scheduled-worker",[{"type":"text","value":"scheduled"}])
+    schedule=store.create_schedule(workflow["id"],60,now=100)
+    result=store.worker_tick(ToolRegistry(),now=160,limit=2)
+    assert result["scheduled"]["executed"]==1
+    assert result["scheduled"]["runs"][0]["status"]=="completed"
+    assert store.get_schedule(schedule["id"])["last_status"]=="completed"
