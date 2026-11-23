@@ -8,11 +8,11 @@ import uuid
 from pathlib import Path
 
 class DatabaseManager:
-    CURRENT_VERSION = 2
+    CURRENT_VERSION = 3
     REQUIRED_TABLES = {
         "app_settings", "memories", "workflows", "workflow_runs", "workflow_schedules",
         "workflow_jobs", "analytics_events", "kg_nodes", "kg_edges",
-        "evolution_candidates", "evolution_state", "installed_extensions", "skill_executions",
+        "evolution_candidates", "evolution_state", "installed_extensions", "skill_executions",\n        "chat_conversations", "chat_messages", "chat_attachments",
     }
     def __init__(self, path="data/mojo_agent.sqlite3"):
         self.path = str(path)
@@ -42,6 +42,24 @@ class DatabaseManager:
                 conn.execute("INSERT OR IGNORE INTO schema_migrations VALUES(2,'durable_workflow_jobs',?)", (time.time(),))
                 conn.execute("PRAGMA user_version=2")
                 applied.append(2)
+                version = 2
+            if version < 3:
+                conn.execute("""CREATE TABLE IF NOT EXISTS chat_conversations(
+                    id TEXT PRIMARY KEY, title TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'algorithms',
+                    model TEXT NOT NULL DEFAULT '', system_prompt TEXT NOT NULL DEFAULT '',
+                    created_at REAL NOT NULL, updated_at REAL NOT NULL, archived INTEGER NOT NULL DEFAULT 0)""")
+                conn.execute("""CREATE TABLE IF NOT EXISTS chat_messages(
+                    id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL, content TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL)""")
+                conn.execute("""CREATE TABLE IF NOT EXISTS chat_attachments(
+                    id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+                    message_id TEXT, filename TEXT NOT NULL, extension TEXT NOT NULL, content_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL, content BLOB NOT NULL, created_at REAL NOT NULL)""")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id,created_at)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC)")
+                conn.execute("INSERT OR IGNORE INTO schema_migrations VALUES(3,'persistent_chat_workspace',?)", (time.time(),))
+                conn.execute("PRAGMA user_version=3")
+                applied.append(3)
         return {"version": self.status()["version"], "applied": applied}
 
     def status(self):
