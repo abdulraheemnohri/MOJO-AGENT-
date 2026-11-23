@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Plus, Send, Trash2, Paperclip, ShieldCheck, Wrench, RefreshCw, MessageSquare, FileText, Download, Cpu } from 'lucide-react';
+import { Bot, Plus, Send, Trash2, Paperclip, ShieldCheck, Wrench, RefreshCw, MessageSquare, FileText, Cpu } from 'lucide-react';
 
 type Message = { id:string; role:string; content:string; created_at:number; metadata?:any };
 type Conversation = { id:string; title:string; mode:string; model:string; updated_at:number; message_count?:number };
@@ -119,15 +119,15 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
  };
  const selectDefaultModel=async(modelId:string)=>{
   const item=(models.items||[]).find((m:any)=>m.model_id===modelId);
-  if(!item?.id||item.id==='algorithms')return;
-  setBusy(true);try{await call('/chat/models/'+item.id+'/select',{},'POST');setModel(modelId);await refreshCatalog();setNotice('Default local model selected. Enable LiteRT-LM in Runtime & Models if it is not already enabled.')}
+  if(!item?.catalog_id)return;
+  setBusy(true);try{await call('/chat/models/'+item.catalog_id+'/select',{},'POST');setModel(modelId);await refreshCatalog();setNotice('Default local model selected. Enable LiteRT-LM in Runtime & Models if it is not already enabled.')}
   catch(e:any){setNotice(e.message)}finally{setBusy(false)}
  };
  const removeModel=async(modelId:string)=>{
   const item=(models.items||[]).find((m:any)=>m.model_id===modelId);
-  if(!item?.id)return;
+  if(!item?.catalog_id)return;
   if(!confirm('Remove this model from the catalog? Model files on disk will not be deleted.'))return;
-  setBusy(true);try{await call('/chat/models/'+item.id,undefined,'DELETE');await refreshCatalog();if(model===modelId)setModel('');setNotice('Model removed from catalog; model files were left untouched.')}
+  setBusy(true);try{await call('/chat/models/'+item.catalog_id,undefined,'DELETE');await refreshCatalog();if(model===modelId)setModel('');setNotice('Model removed from catalog; model files were left untouched.')}
   catch(e:any){setNotice(e.message)}finally{setBusy(false)}
  };
  const saveChatSettings=async()=>{
