@@ -14,7 +14,7 @@
 
 ## Deliberate limitations
 - No LLM integration by design.
-- Workflow runner is synchronous; no background scheduler or distributed queue.
+- Main-branch baseline remains synchronous; durable queue and opt-in worker are implemented on the feature branch, but not merged into main.
 - Android still uses a single Compose activity and a raw JSON response panel; native file pickers, full workflow editor and structured list rendering are incomplete.
 - Native Mojo compiler compatibility and Windows installer packaging require separate toolchain validation.
 - API defaults to loopback; physical-device access should use a trusted local connection such as ADB reverse.
@@ -69,7 +69,17 @@
 
 
 ### Visual workflow builder and adaptive interface
-- Replaced the single-text workflow form with a multi-step visual composer supporting text output, text statistics and calculator steps.
+- Replaced the single-text workflow form with a multi-step visual composer supporting text output, text statistics, calculator and safe template/data-mapping steps.
 - Supports up to 50 ordered steps, add/remove, move up/down, editing existing workflows, and starter/analysis templates.
-- Keeps workflow execution restricted to the backend's declarative allowlist; the visual editor does not enable scripts, shell commands, arbitrary code or branching on untrusted expressions.
+- Adds conditional execution against earlier step results with equals, not_equals, contains and truthy operators. False conditions are recorded as skipped; the same validation and behavior apply to direct and queued runs. The visual editor exposes prior-step selection and expected-value controls.
+- Template mappings and conditions can reference only earlier steps. No arbitrary expression evaluator, shell command, script, dynamic import or user-supplied code is executed.
 - Added responsive step cards and mobile stacking styles consistent with MOJO's design system.
+
+
+### Conditional workflow execution (feature branch; CI pending)
+- Added optional per-step conditions referencing an earlier step index.
+- Supported operators: equals, not_equals, contains and truthy. Non-truthy comparisons use bounded text values.
+- False conditions create explicit skipped step results and do not invoke the step operation.
+- The same deterministic evaluator is used by direct workflow runs and durable queue jobs.
+- Frontend step cards provide condition enable/disable, source-step selection, operator selection and expected text.
+- Automated tests cover false/true conditions, validation rejection and immutable queued workflow snapshots.
