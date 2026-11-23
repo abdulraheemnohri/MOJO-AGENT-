@@ -123,7 +123,9 @@ done(if (it.isSuccessful) text else "HTTP " + it.code + ": " + text)
 fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, discover: ((List<String>) -> Unit) -> Unit) {
  val context = LocalContext.current
  val screenWidthDp = LocalConfiguration.current.screenWidthDp
- val localPrefs = remember { context.getSharedPreferences("mojo", Context.MODE_PRIVATE) }\n var base by remember { mutableStateOf(localPrefs.getString("api_base", "http://10.0.2.2:8766/api/v1") ?: "http://10.0.2.2:8766/api/v1") }\n var apiToken by remember { mutableStateOf(localPrefs.getString("api_token", "") ?: "") }
+ val localPrefs = remember { context.getSharedPreferences("mojo", Context.MODE_PRIVATE) }
+ var base by remember { mutableStateOf(localPrefs.getString("api_base", "http://10.0.2.2:8766/api/v1") ?: "http://10.0.2.2:8766/api/v1") }
+ var apiToken by remember { mutableStateOf(localPrefs.getString("api_token", "") ?: "") }
  var tab by remember { mutableStateOf("Home") }
  var goal by remember { mutableStateOf("Create a project plan") }
  var memoryText by remember { mutableStateOf("") }
@@ -422,10 +424,17 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
    "Security" -> {
     Text("Security status", style = MaterialTheme.typography.titleLarge)
     Button(onClick = { request("/security/status") }, enabled = !busy) { Text("Inspect security controls") }
-    Text("Token authentication is supported. Initial token creation must be performed from the backend host; keep LAN access on trusted networks and use HTTPS for remote exposure.")\n    OutlinedTextField(apiToken, { apiToken = it }, label = { Text("API bearer token") }, modifier = Modifier.fillMaxWidth(), singleLine = true)\n    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { localPrefs.edit().putString("api_token", apiToken.trim()).apply(); output = "API token saved securely in this app preferences." }, enabled = !busy) { Text("Save token") }; OutlinedButton(onClick = { apiToken = ""; localPrefs.edit().remove("api_token").apply(); output = "Saved API token removed from this device." }) { Text("Forget token") } }\n    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { request("/security/status") }, enabled = !busy) { Text("Refresh security status") }; Button(onClick = { request("/security/token/bootstrap", "POST", "{}") }, enabled = !busy) { Text("Create initial token") } }
+    Text("Token authentication is supported. Initial token creation must be performed from the backend host; keep LAN access on trusted networks and use HTTPS for remote exposure.")
+    OutlinedTextField(apiToken, { apiToken = it }, label = { Text("API bearer token") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { localPrefs.edit().putString("api_token", apiToken.trim()).apply(); output = "API token saved securely in this app preferences." }, enabled = !busy) { Text("Save token") }; OutlinedButton(onClick = { apiToken = ""; localPrefs.edit().remove("api_token").apply(); output = "Saved API token removed from this device." }) { Text("Forget token") } }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { request("/security/status") }, enabled = !busy) { Text("Refresh security status") }; Button(onClick = { request("/security/token/bootstrap", "POST", "{}") }, enabled = !busy) { Text("Create initial token") } }
    }
    "Settings" -> {
-    Text("Runtime settings", style = MaterialTheme.typography.titleLarge)\n    Text("Backend API security", style = MaterialTheme.typography.titleMedium)\n    OutlinedTextField(apiToken, { apiToken = it }, label = { Text("Bearer token (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)\n    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { localPrefs.edit().putString("api_token", apiToken.trim()).apply(); output = "API token saved for this device." }) { Text("Save API token") }; OutlinedButton(onClick = { apiToken = ""; localPrefs.edit().remove("api_token").apply() }) { Text("Clear token") } }\n    OutlinedButton(onClick = { request("/security/status") }, enabled = !busy) { Text("Check API security") }
+    Text("Runtime settings", style = MaterialTheme.typography.titleLarge)
+    Text("Backend API security", style = MaterialTheme.typography.titleMedium)
+    OutlinedTextField(apiToken, { apiToken = it }, label = { Text("Bearer token (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { localPrefs.edit().putString("api_token", apiToken.trim()).apply(); output = "API token saved for this device." }) { Text("Save API token") }; OutlinedButton(onClick = { apiToken = ""; localPrefs.edit().remove("api_token").apply() }) { Text("Clear token") } }
+    OutlinedButton(onClick = { request("/security/status") }, enabled = !busy) { Text("Check API security") }
     ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
      Text("Interface preferences", style = MaterialTheme.typography.titleMedium)
      Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Compact spacing", Modifier.weight(1f)); Switch(checked = compactMode, onCheckedChange = { compactMode = it }) }
