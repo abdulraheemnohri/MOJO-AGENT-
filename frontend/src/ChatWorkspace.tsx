@@ -23,7 +23,7 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
  const [toolName,setToolName]=useState('calculator');
  const [toolInput,setToolInput]=useState('2+2');
  const [toolApproval,setToolApproval]=useState(false);
- const [skillName,setSkillName]=useState('');
+ const [skillName,setSkillName]=useState('');\n const [extensionToolName,setExtensionToolName]=useState('');\n const [toolSource,setToolSource]=useState('builtin');
  const [skillOperation,setSkillOperation]=useState('');
  const [showTools,setShowTools]=useState(false);
  const [systemPrompt,setSystemPrompt]=useState('');
@@ -98,9 +98,9 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
   if(!active){setNotice('Create or select a conversation first.');return}
   setBusy(true);setNotice('');
   try{
-   const operation=skillName?skillOperation:toolName;
+   const operation=toolSource==='skill'?skillOperation:toolSource==='extension'?extensionToolName:toolName;
    const args=operation==='calculator'?{expression:toolInput}:{text:toolInput};
-   await call('/chat/conversations/'+active+'/tools/execute',{name:operation,arguments:args,approved:toolApproval,skill_name:skillName||undefined});
+   await call('/chat/conversations/'+active+'/tools/execute',{name:operation,arguments:args,approved:toolApproval,tool_source:toolSource,skill_name:toolSource==='skill'?skillName:undefined});
    setToolApproval(false);await Promise.all([refreshMessages(active),refreshSessions()]);
    setNotice('Approved tool operation completed.');
   }catch(e:any){setNotice(e.message)}finally{setBusy(false)}
@@ -171,14 +171,15 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
    </div>
   </section>
   {showTools&&<aside className="chat-tools-panel"><div className="chat-sidebar-head"><div><b>Tools & skills</b><small>Explicit approval required</small></div><button className="icon-action secondary" onClick={()=>setShowTools(false)}>×</button></div>
-   <label>Built-in tool<select value={toolName} onChange={e=>{setToolName(e.target.value);setSkillName('')}}><option value="calculator">Calculator</option><option value="text_stats">Text statistics</option></select></label>
-   <label>{toolName==='calculator'?'Expression':'Text input'}<textarea value={toolInput} onChange={e=>setToolInput(e.target.value)}/></label>
+   <label>Tool source<select value={toolSource} onChange={e=>{setToolSource(e.target.value);setSkillName('');setToolApproval(false)}}><option value="builtin">Built-in tools</option><option value="extension">Installed extension tools</option><option value="skill">Installed skills</option></select></label>
+   {toolSource==='builtin'&&<label>Built-in tool<select value={toolName} onChange={e=>setToolName(e.target.value)}><option value="calculator">Calculator</option><option value="text_stats">Text statistics</option></select></label>}
+   {toolSource==='extension'&&<label>Installed extension tool<select value={extensionToolName} onChange={e=>setExtensionToolName(e.target.value)}><option value="">Choose tool</option>{(tools.installed_tools||[]).map((item:any)=><option key={item.id} value={item.name}>{item.name}</option>)}</select></label>}
+   {toolSource==='skill'&&<><label>Installed skill<select value={skillName} onChange={e=>{setSkillName(e.target.value);setSkillOperation('')}}><option value="">Choose skill</option>{(tools.skills||[]).map((s:any)=><option key={s.name} value={s.name}>{s.name}</option>)}</select></label>{skillName&&<label>Allowed skill operation<select value={skillOperation} onChange={e=>setSkillOperation(e.target.value)}><option value="">Choose operation</option>{allowedSkillOps.map((op:string)=><option key={op} value={op}>{op}</option>)}</select></label>}</>}
+   <label>{(toolSource==='skill'?skillOperation:toolSource==='extension'?extensionToolName:toolName)==='calculator'?'Expression':'Text input'}<textarea value={toolInput} onChange={e=>setToolInput(e.target.value)}/></label>
    <div className="chat-approval-card"><ShieldCheck size={16}/><span>Review the exact operation and input before running it.</span></div>
    <label className="chat-approval"><input type="checkbox" checked={toolApproval} onChange={e=>setToolApproval(e.target.checked)}/> I approve this tool operation</label>
-   <button className="primary" disabled={busy||!active||!toolApproval||!toolInput.trim()} onClick={executeTool}>Execute approved tool</button>
-   <hr/>
-   <label>Installed skill<select value={skillName} onChange={e=>{setSkillName(e.target.value);setSkillOperation('')}}><option value="">No skill selected</option>{(tools.skills||[]).map((s:any)=><option key={s.name} value={s.name}>{s.name}</option>)}</select></label>
-   {skillName&&<><small>{selectedSkill?.description}</small><label>Skill operation<select value={skillOperation} onChange={e=>setSkillOperation(e.target.value)}><option value="">Choose operation</option>{allowedSkillOps.map((op:string)=><option key={op} value={op}>{op}</option>)}</select></label><label>Input<textarea value={toolInput} onChange={e=>setToolInput(e.target.value)}/></label><button className="primary" disabled={busy||!active||!toolApproval||!skillOperation||!toolInput.trim()} onClick={executeTool}>Run approved skill operation</button></>}
+   <button className="primary" disabled={busy||!active||!toolApproval||!toolInput.trim()||(toolSource==='skill'&&(!skillName||!skillOperation))||(toolSource==='extension'&&!extensionToolName)} onClick={executeTool}>Execute approved operation</button>
+   <small>{toolSource==='skill'?selectedSkill?.description:toolSource==='extension'?'Runs only the installed manifest operation.':'Built-in deterministic operation.'}</small>
    <p className="chat-footnote">Model text cannot directly invoke tools. Tool calls are separate, visible API requests with per-operation approval.</p>
   </aside>}
  </div>;
