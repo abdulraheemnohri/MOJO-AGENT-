@@ -62,3 +62,8 @@ Restore constraints:
 - No shell commands, Python source, arbitrary plugin code or remote execution.
 - Tool approval requirements are not configurable off.
 - Job queue endpoints are local API capabilities; remote authentication/TLS is still a separate deployment requirement. Do not expose the backend port directly to the public internet.
+
+
+## Restore validation hardening
+
+Backup inspection and restore now require the complete set of application tables (settings, memory, workflows and job history, analytics, knowledge graph, evolution state, and installed extensions). A SQLite file with only a subset of MOJO tables is rejected before replacing the live database. HTTP backup uploads are consumed incrementally and stopped as soon as the 128 MiB limit is exceeded, including requests without a `Content-Length` header. Keep the backend stopped during a production restore and retain the generated pre-restore safety copy.
