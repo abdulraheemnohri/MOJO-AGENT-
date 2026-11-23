@@ -238,6 +238,7 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       OutlinedButton(onClick = { request("/runtime/status") }, enabled = !busy) { Text("Refresh metrics") }
       OutlinedButton(onClick = { request("/diagnostics") }, enabled = !busy) { Text("Diagnostics") }
+      OutlinedButton(onClick = { request("/database/status") }, enabled = !busy) { Text("Database schema") }
      }
     } }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
