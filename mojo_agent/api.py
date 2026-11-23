@@ -83,7 +83,7 @@ def _request_is_loopback(request):
 @app.middleware("http")
 async def enforce_api_token(request,call_next):
  path=request.url.path
- if path.startswith('/api/v1/') and path not in AUTH_EXEMPT_PATHS and settings.auth_status()['enabled']:
+ if request.method!='OPTIONS' and path.startswith('/api/v1/') and path not in AUTH_EXEMPT_PATHS and settings.auth_status()['enabled']:
   header=request.headers.get('authorization','')
   token=header[7:].strip() if header.lower().startswith('bearer ') else ''
   if not settings.verify_api_token(token):
