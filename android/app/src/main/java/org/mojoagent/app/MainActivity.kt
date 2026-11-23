@@ -172,7 +172,8 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var jobId by remember { mutableStateOf("") }
   var maxAttempts by remember { mutableStateOf("3") }
   var chatConversationId by remember { mutableStateOf("") }
-  var chatMode by remember { mutableStateOf("algorithms") }\n  var chatDefaultMode by remember { mutableStateOf("algorithms") }
+  var chatMode by remember { mutableStateOf("algorithms") }
+  var chatDefaultMode by remember { mutableStateOf("algorithms") }
   var chatDraft by remember { mutableStateOf("") }
   var chatHistory by remember { mutableStateOf(listOf<Pair<String,String>>()) }
   var chatSessions by remember { mutableStateOf(listOf<Pair<String,String>>()) }
