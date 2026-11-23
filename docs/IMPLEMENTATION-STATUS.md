@@ -55,4 +55,14 @@
 - Added SQLite schema version tracking and idempotent migration metadata.
 - Added loopback-only backup inspection and restore with integrity checks, optional SHA-256 verification, size cap, pre-restore safety backup and WAL handling.
 - Added database status and restore controls to the web settings page and schema diagnostics to Android.
-- Remote authentication/TLS, distributed queue coordination, forced interruption of a currently executing step and production multi-process database operation remain out of scope.
+- Distributed queue coordination, forced interruption of a currently executing step and production multi-process database operation remain out of scope. TLS termination is still a deployment responsibility; do not expose the backend directly to the public internet.
+
+
+### Local API security and Windows startup (feature branch)
+- Added opt-in bearer-token authentication for all API routes except health, security-status and loopback-only initial token bootstrap.
+- Generates 40-byte random URL-safe tokens, stores only salted SHA-256 digests, uses constant-time digest comparison, and supports authenticated token rotation and revocation.
+- Initial token creation, rotation and revocation are loopback-restricted. CORS allows Authorization headers and preflight requests.
+- Web Security Center supports initial setup, token rotation, revocation and session-only token storage. Android accepts a bearer token, stores it in app-private preferences and supports loopback initial setup.
+- Added a per-user Windows Task Scheduler installer and uninstall script; it starts the backend at logon on 127.0.0.1 without Docker or administrator privileges.
+- The dashboard retains its responsive dark/light theme, compact/comfortable density, keyboard navigation, mobile drawer and reduced-motion support; new security cards follow the existing adaptive design system.
+- TLS certificates, public internet exposure, multi-user RBAC and distributed worker coordination are not enabled by this change.
