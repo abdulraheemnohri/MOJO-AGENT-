@@ -9,6 +9,11 @@ from pathlib import Path
 
 class DatabaseManager:
     CURRENT_VERSION = 2
+    REQUIRED_TABLES = {
+        "app_settings", "memories", "workflows", "workflow_runs", "workflow_schedules",
+        "workflow_jobs", "analytics_events", "kg_nodes", "kg_edges",
+        "evolution_candidates", "evolution_state", "installed_extensions", "skill_executions",
+    }
     def __init__(self, path="data/mojo_agent.sqlite3"):
         self.path = str(path)
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
@@ -65,9 +70,10 @@ class DatabaseManager:
                 if integrity != "ok":
                     raise ValueError("backup integrity check failed")
                 tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-                required = {"app_settings", "workflows"}
-                if not required.issubset(tables):
-                    raise ValueError("backup is not a MOJO AGENT database")
+                missing = DatabaseManager.REQUIRED_TABLES - tables
+                if missing:
+                    names = ", ".join(sorted(missing))
+                    raise ValueError("backup is missing required MOJO AGENT tables: " + names)
                 version = conn.execute("PRAGMA user_version").fetchone()[0]
             return {"valid": True, "sha256": digest, "size_bytes": len(payload), "schema_version": version, "tables": sorted(tables)}
         except sqlite3.DatabaseError as exc:
