@@ -12,7 +12,7 @@ class DatabaseManager:
     REQUIRED_TABLES = {
         "app_settings", "memories", "workflows", "workflow_runs", "workflow_schedules",
         "workflow_jobs", "analytics_events", "kg_nodes", "kg_edges",
-        "evolution_candidates", "evolution_state", "installed_extensions", "skill_executions",\n        "chat_conversations", "chat_messages", "chat_attachments",
+        "evolution_candidates", "evolution_state", "installed_extensions", "skill_executions",\n        "chat_conversations", "chat_messages", "chat_attachments", "chat_models",
     }
     def __init__(self, path="data/mojo_agent.sqlite3"):
         self.path = str(path)
@@ -55,6 +55,9 @@ class DatabaseManager:
                     id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
                     message_id TEXT, filename TEXT NOT NULL, extension TEXT NOT NULL, content_type TEXT NOT NULL,
                     size_bytes INTEGER NOT NULL, content BLOB NOT NULL, created_at REAL NOT NULL)""")
+                conn.execute("""CREATE TABLE IF NOT EXISTS chat_models(
+                    id TEXT PRIMARY KEY, label TEXT NOT NULL, model_id TEXT NOT NULL UNIQUE,
+                    backend TEXT NOT NULL DEFAULT 'cpu', added_at REAL NOT NULL)""")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id,created_at)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC)")
                 conn.execute("INSERT OR IGNORE INTO schema_migrations VALUES(3,'persistent_chat_workspace',?)", (time.time(),))
