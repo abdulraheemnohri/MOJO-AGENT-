@@ -14,11 +14,11 @@ from .analytics import Analytics
 from .settings import SettingsStore
 from .extensions import GitHubExtensionRegistry, ExtensionError
 from .agent_runtime import AgentRuntime
-from .litertlm import LiteRTLM, LiteRTLMError
+from .litertlm import LiteRTLM, LiteRTLMError\nfrom .database import DatabaseManager
 import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
-memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
+memory=MemoryStore();database=DatabaseManager(str(MemoryStore().path));database.migrate();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
 WORKER_STOP=threading.Event()
 WORKER_THREAD=None
 WORKER_ID="mojo-background-worker"
@@ -114,6 +114,32 @@ def runtime_status():
    if table in table_names: counts[table]=conn.execute('SELECT COUNT(*) FROM "'+table+'"').fetchone()[0]
  schedules=workflows.list_schedules()
  return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':False,'execution_mode':'manual tick endpoint'},'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
+@app.get('/api/v1/database/status')
+def database_status():return database.status()
+
+def _require_loopback(request:Request):
+ try:peer=ipaddress.ip_address(request.client.host if request.client else '')
+ except ValueError:raise HTTPException(403,'Database maintenance is available only to loopback clients')
+ if not peer.is_loopback:raise HTTPException(403,'Database maintenance is restricted to loopback clients')
+
+@app.post('/api/v1/backup/inspect')
+async def inspect_database_backup(request:Request):
+ _require_loopback(request)
+ payload=await request.body()
+ try:return database.inspect_payload(payload)
+ except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/v1/backup/restore')
+async def restore_database_backup(request:Request):
+ _require_loopback(request)
+ payload=await request.body()
+ if len(payload)>128*1024*1024:raise HTTPException(413,'Backup exceeds the 128 MiB restore limit')
+ try:
+  result=database.restore_payload(payload,request.headers.get('x-backup-sha256'))
+  _record_runtime_log('WARNING','Database restored from verified local backup')
+  return result
+ except ValueError as exc:raise HTTPException(400,str(exc))
+ except (OSError,sqlite3.Error) as exc:raise HTTPException(500,'Restore failed safely: '+str(exc)[:200])
 @app.get('/api/v1/backup/export')
 def export_database_backup(request:Request):
  try:
