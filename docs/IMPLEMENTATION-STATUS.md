@@ -36,3 +36,11 @@
 - GitHub extension manifests are public JSON only. No arbitrary code execution, dynamic imports, shell hooks or binary extensions.
 - Skills currently return their instructions and deterministic task plan; tools are not auto-executed by a skill.
 - All features in this section are pending the branch CI run and review; do not treat them as merged into main until PR merge.
+
+
+### Skill execution engine (pending branch CI/review)
+- Installed skills can execute only manifest-allowlisted built-in operations, one operation per request.
+- Explicit approval is required for every execution; the backend rejects operations outside the skill allowlist.
+- SQLite stores bounded skill execution history with status and input shape/length metadata; raw input text is not persisted.
+- Web and Android clients expose skill operation execution and history.
+- LiteRT-LM passes Hugging Face repository IDs directly to the CLI rather than guessing a model artifact filename.
