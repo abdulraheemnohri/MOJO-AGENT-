@@ -50,7 +50,7 @@ Start `./scripts/run_termux_backend.sh`; in a second Termux session start `./scr
 
 ## Android native app
 
-The APK is a client, not a bundled Python server. Download the `mojo-agent-debug-apk` artifact from the [Android APK workflow](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/workflows/android-apk.yml).
+The APK is a client, not a bundled Python server. The native app includes a basic Chat tab with saved conversation switching, local model approval and approved built-in tools. Download the `mojo-agent-debug-apk` artifact from the [Android APK workflow](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/workflows/android-apk.yml).
 
 - Android emulator backend URL: `http://10.0.2.2:8766/api/v1`
 - USB: run `adb reverse tcp:8766 tcp:8766` and use `http://127.0.0.1:8766/api/v1`
