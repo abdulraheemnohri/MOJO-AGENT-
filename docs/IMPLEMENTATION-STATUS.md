@@ -66,3 +66,10 @@
 - Added a per-user Windows Task Scheduler installer and uninstall script; it starts the backend at logon on 127.0.0.1 without Docker or administrator privileges.
 - The dashboard retains its responsive dark/light theme, compact/comfortable density, keyboard navigation, mobile drawer and reduced-motion support; new security cards follow the existing adaptive design system.
 - TLS certificates, public internet exposure, multi-user RBAC and distributed worker coordination are not enabled by this change.
+
+
+### Visual workflow builder and adaptive interface
+- Replaced the single-text workflow form with a multi-step visual composer supporting text output, text statistics and calculator steps.
+- Supports up to 50 ordered steps, add/remove, move up/down, editing existing workflows, and starter/analysis templates.
+- Keeps workflow execution restricted to the backend's declarative allowlist; the visual editor does not enable scripts, shell commands, arbitrary code or branching on untrusted expressions.
+- Added responsive step cards and mobile stacking styles consistent with MOJO's design system.
