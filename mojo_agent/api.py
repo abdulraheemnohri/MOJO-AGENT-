@@ -79,7 +79,7 @@ class SkillExecutionInput(BaseModel):operation:str=Field(min_length=1,max_length
 class ChatConversationInput(BaseModel):title:str=Field(default='New chat',max_length=120);mode:str|None=None;model:str|None=None
 class ChatConversationUpdate(BaseModel):title:str|None=Field(default=None,max_length=120);mode:str|None=None;model:str|None=None;system_prompt:str|None=Field(default=None,max_length=2000);archived:bool|None=None
 class ChatSendInput(BaseModel):content:str=Field(default='',max_length=20000);mode:str|None=None;model:str|None=None;backend:str|None=None;approved:bool=False;attachments:list[str]=Field(default_factory=list,max_length=10)
-class ChatToolInput(BaseModel):name:str=Field(min_length=1,max_length=48);arguments:dict={};approved:bool=False;skill_name:str|None=None
+class ChatToolInput(BaseModel):name:str=Field(min_length=1,max_length=48);arguments:dict={};approved:bool=False;skill_name:str|None=None;tool_source:str='builtin'
 class ChatModelInput(BaseModel):label:str=Field(min_length=1,max_length=100);model_id:str=Field(min_length=1,max_length=512);backend:str='cpu'
 from typing import Literal
 class LiteRTLMRunInput(BaseModel):
@@ -207,7 +207,9 @@ def add_chat_model(req:ChatModelInput):
  try:
   value,is_hf=LiteRTLM.validate_model(req.model_id)
   item=chat_store.add_model(req.label,value,req.backend)
-  return {**item,'model_source':'huggingface' if is_hf else 'local','available':True}
+  runtime=agent_runtime.model_runtime.status()
+  available=bool(runtime.get('huggingface_repo_cli_available') if is_hf else runtime.get('local_model_cli_available'))
+  return {**item,'model_source':'huggingface' if is_hf else 'local','available':available}
  except (ValueError,FileNotFoundError) as exc:raise HTTPException(400,str(exc))
 
 @app.post('/api/v1/chat/models/{catalog_id}/select')
@@ -352,10 +354,14 @@ def execute_chat_tool(conversation_id:str,req:ChatToolInput):
  if not chat_store.get(conversation_id):raise HTTPException(404,'Conversation not found')
  if not req.approved:raise HTTPException(403,'Approve this exact tool operation before execution')
  try:
-  if req.skill_name:
+  if req.tool_source=='skill':
+   if not req.skill_name:raise HTTPException(400,'skill_name is required for skill operations')
    result=extensions.execute_skill(req.skill_name,req.name,req.arguments,True)
-  else:
+  elif req.tool_source=='extension':
+   result={'status':'completed','result':extensions.execute_tool(req.name,req.arguments,True)}
+  elif req.tool_source=='builtin':
    result={'status':'completed','result':tools.execute(req.name,req.arguments,True)}
+  else:raise HTTPException(400,'tool_source must be builtin, extension or skill')
   rendered=json.dumps(result,ensure_ascii=False,default=str)
   message=chat_store.add_message(conversation_id,'tool',rendered,{'tool':req.name,'skill':req.skill_name,'approved':True})
   analytics.record('chat_tool_executed',{'tool':req.name,'skill':bool(req.skill_name)})
@@ -375,7 +381,7 @@ def runtime_status():
   integrity=conn.execute('PRAGMA quick_check').fetchone()[0]
   table_names={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
   counts={}
-  for table in ('memories','workflows','workflow_runs','workflow_schedules','workflow_jobs','schema_migrations','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates','installed_extensions'):
+  for table in ('memories','workflows','workflow_runs','workflow_schedules','workflow_jobs','schema_migrations','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates','installed_extensions','chat_conversations','chat_messages','chat_attachments','chat_models'):
    if table in table_names: counts[table]=conn.execute('SELECT COUNT(*) FROM "'+table+'"').fetchone()[0]
  schedules=workflows.list_schedules()
  return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':bool(settings.get()['worker_enabled'] and WORKER_THREAD and WORKER_THREAD.is_alive()),'execution_mode':'opt-in background worker or manual tick'},'worker':{'enabled':settings.get()['worker_enabled'],'thread_alive':bool(WORKER_THREAD and WORKER_THREAD.is_alive()),'queued':workflows.job_counts()['queued'],'running':workflows.job_counts()['running']},'schema':database.status(),'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
@@ -625,7 +631,7 @@ def analytics_summary(limit:int=20,event:str|None=None):
 @app.get('/api/v1/diagnostics')
 def diagnostics():
  graph_snapshot=knowledge.snapshot()
- return {'status':'ok','python':platform.python_version(),'platform':platform.platform(),'runtime':'python-reference','runtime_mode':settings.get()['runtime_mode'],'llm_enabled':False,'litertlm':agent_runtime.model_runtime.status(),'database':'sqlite','modules':{'memory_records':len(memory.search('',200)),'workflows':len(workflows.list()),'knowledge_nodes':len(graph_snapshot['nodes']),'knowledge_edges':len(graph_snapshot['edges']),'evolution_candidates':len(evolution_store.list_candidates(500)),'installed_extensions':len(extensions.list())},'limits':{'memory_search':200,'workflow_steps':50,'analytics_retention':analytics.retention},'safety':{'tool_approval_required':True,'shell_execution':False,'source_self_modification':False,'github_extension_code_execution':False}}
+ return {'status':'ok','python':platform.python_version(),'platform':platform.platform(),'runtime':'python-reference','runtime_mode':settings.get()['runtime_mode'],'llm_enabled':False,'litertlm':agent_runtime.model_runtime.status(),'database':'sqlite','modules':{'memory_records':len(memory.search('',200)),'workflows':len(workflows.list()),'knowledge_nodes':len(graph_snapshot['nodes']),'knowledge_edges':len(graph_snapshot['edges']),'evolution_candidates':len(evolution_store.list_candidates(500)),'installed_extensions':len(extensions.list()),'chat_conversations':len(chat_store.list(100))},'limits':{'memory_search':200,'workflow_steps':50,'analytics_retention':analytics.retention},'safety':{'tool_approval_required':True,'shell_execution':False,'source_self_modification':False,'github_extension_code_execution':False}}
 @app.get('/api/v1/security/status')
 def security_status():return {'mode':'local-first','tool_allowlist':tools.list_tools(),'approval_required':settings.get()['tool_approval_required'],'api_auth':settings.auth_status(),'shell_execution':False,'source_self_modification':False,'remote_access':'LAN access requires token authentication; use HTTPS termination before exposing beyond trusted networks'}
 @app.get('/api/v1/settings')
