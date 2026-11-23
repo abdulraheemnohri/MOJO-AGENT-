@@ -62,7 +62,7 @@ class QInput(BaseModel):q:float;reward:float;next_max:float=0;alpha:float=Field(
 class WorkflowInput(BaseModel):name:str=Field(min_length=1,max_length=120);steps:list[dict]=Field(min_length=1,max_length=50)
 class ScheduleInput(BaseModel):workflow_id:str;interval_seconds:int=Field(ge=60,le=2592000)
 class ScheduleEnabledInput(BaseModel):enabled:bool
-class WorkflowEnqueueInput(BaseModel):max_attempts:int=Field(default=3,ge=1,le=10)
+class WorkflowEnqueueInput(BaseModel):max_attempts:int|None=Field(default=None,ge=1,le=10)
 class WorkerTickInput(BaseModel):limit:int=Field(default=5,ge=1,le=10);worker_id:str=Field(default='manual-worker',min_length=1,max_length=80)
 class NodeInput(BaseModel):label:str=Field(min_length=1,max_length=300);kind:str='concept';properties:dict={}
 class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weight:float=Field(default=1,ge=0,le=100)
@@ -259,7 +259,7 @@ def list_workflow_jobs(limit:int=100,status:str|None=None):
 @app.post('/api/v1/workflows/{workflow_id}/enqueue')
 def enqueue_workflow(workflow_id:str,req:WorkflowEnqueueInput):
  try:
-  item=workflows.enqueue(workflow_id,req.max_attempts);analytics.record('workflow_job_enqueued',{'job_id':item['id']})
+  item=workflows.enqueue(workflow_id,req.max_attempts or settings.get()['workflow_max_attempts']);analytics.record('workflow_job_enqueued',{'job_id':item['id']})
   return item
  except KeyError as exc:raise HTTPException(404,str(exc))
  except ValueError as exc:raise HTTPException(400,str(exc))
