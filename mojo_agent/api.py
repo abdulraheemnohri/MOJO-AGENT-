@@ -111,10 +111,10 @@ def runtime_status():
   integrity=conn.execute('PRAGMA quick_check').fetchone()[0]
   table_names={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
   counts={}
-  for table in ('memories','workflows','workflow_runs','workflow_schedules','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates','installed_extensions'):
+  for table in ('memories','workflows','workflow_runs','workflow_schedules','workflow_jobs','schema_migrations','analytics_events','knowledge_nodes','knowledge_edges','evolution_candidates','installed_extensions'):
    if table in table_names: counts[table]=conn.execute('SELECT COUNT(*) FROM "'+table+'"').fetchone()[0]
  schedules=workflows.list_schedules()
- return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':False,'execution_mode':'manual tick endpoint'},'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
+ return {'status':'ok' if integrity=='ok' else 'degraded','pid':os.getpid(),'uptime_seconds':round(time.time()-RUNTIME_STARTED_AT,1),'threads':threading.active_count(),'database':{'engine':'sqlite','path':os.path.basename(db_path),'size_bytes':db_bytes,'integrity':integrity,'tables':sorted(table_names),'counts':counts},'scheduler':{'total':len(schedules),'enabled':sum(1 for s in schedules if s['enabled']),'automatic_daemon':bool(settings.get()['worker_enabled'] and WORKER_THREAD and WORKER_THREAD.is_alive()),'execution_mode':'opt-in background worker or manual tick'},'worker':{'enabled':settings.get()['worker_enabled'],'thread_alive':bool(WORKER_THREAD and WORKER_THREAD.is_alive()),'queued':sum(1 for j in workflows.list_jobs(200,'queued')),'running':sum(1 for j in workflows.list_jobs(200,'running'))},'schema':database.status(),'safety':{'llm_enabled':False,'tool_approval_required':True,'shell_execution':False,'source_self_modification':False}}
 @app.get('/api/v1/database/status')
 def database_status():return database.status()
 
