@@ -1,29 +1,42 @@
 # MOJO AGENT
 
-Algorithm-first, local-first autonomous agent runtime. **No LLM is required or loaded.** Python is the supported cross-platform reference backend; React/Vite and Android are companion clients.
+Algorithm-first, local-first autonomous agent runtime. **No LLM is required or loaded in the main baseline.** Python/FastAPI is the supported reference backend; React/Vite and Kotlin/Jetpack Compose are companion clients.
 
-## Quick install
+## Quick start — Windows 10/11
 
-### Windows 10/11 (PowerShell)
 ```powershell
 git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install_all.ps1
 ```
-Start in two terminals: ` .\scripts\run_backend.ps1 ` and ` .\scripts\run_frontend.ps1 `.
+
+Open two PowerShell terminals:
+
+```powershell
+.\scripts\run_backend.ps1
+.\scripts\run_frontend.ps1
+```
+
+Dashboard: http://127.0.0.1:5173  
+API health: http://127.0.0.1:8766/api/v1/health  
+Interactive API docs: http://127.0.0.1:8766/docs
+
+## Other platforms
 
 ### Linux / macOS
+
 ```bash
 git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_all.sh
 ```
-Start in two terminals: `./scripts/run_backend.sh` and `./scripts/run_frontend.sh`.
 
-### Android / Termux
-Install Termux from a current trusted distribution, then:
+Run `./scripts/run_backend.sh` and `./scripts/run_frontend.sh` in separate terminals.
+
+### Android / Termux backend
+
 ```bash
 pkg update && pkg upgrade -y
 pkg install -y git python nodejs-lts
@@ -32,38 +45,58 @@ cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_termux.sh
 ```
-Run `./scripts/run_termux_backend.sh` and in another Termux session `./scripts/run_termux_frontend.sh`. Open http://127.0.0.1:5173 on the phone.
 
-## Service URLs
-
-- Dashboard: http://127.0.0.1:5173
-- Backend health: http://127.0.0.1:8766/api/v1/health
-- API docs: http://127.0.0.1:8766/docs
+Start `./scripts/run_termux_backend.sh`; in a second Termux session start `./scripts/run_termux_frontend.sh`. Open http://127.0.0.1:5173 on the phone.
 
 ## Android native app
 
-The APK is a client, not a bundled server. Install the current debug artifact from the [Android APK workflow](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/workflows/android-apk.yml). On the same Wi-Fi, run the PC backend with `--host 0.0.0.0 --port 8766`, allow TCP 8766 on the private firewall and tap **Find backend on Wi-Fi** in the app. For USB use `adb reverse tcp:8766 tcp:8766` and `http://127.0.0.1:8766/api/v1`. Emulator URL: `http://10.0.2.2:8766/api/v1`.
+The APK is a client, not a bundled Python server. Download the `mojo-agent-debug-apk` artifact from the [Android APK workflow](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/workflows/android-apk.yml).
 
-## Complete installation instructions
+- Android emulator backend URL: `http://10.0.2.2:8766/api/v1`
+- USB: run `adb reverse tcp:8766 tcp:8766` and use `http://127.0.0.1:8766/api/v1`
+- Same trusted Wi-Fi: run the backend on a private LAN interface, permit TCP 8766 in the private firewall, then use backend discovery in the app.
 
-See [docs/INSTALLATION.md](docs/INSTALLATION.md) for Windows, Ubuntu/Debian, Fedora, Arch/Manjaro, macOS, Termux, Android APK installation/build, firewall setup, testing, backup and troubleshooting.
+## Capabilities
+
+- Deterministic goal planning and algorithm utilities
+- Bounded evolutionary strategy optimization with validation and explicit approval
+- SQLite memory CRUD, search, import and export
+- Knowledge graph nodes, edges and search
+- Allowlisted tools with mandatory approval
+- Workflow CRUD, bounded synchronous execution and run history
+- Scheduler definitions with manual scheduler tick
+- Persistent analytics, diagnostics, runtime status and bounded metadata-only logs
+- Settings and responsive dashboard preferences
+- Adaptive Android client with local backend discovery
+
+## Project documentation
+
+- [Complete project guide](docs/PROJECT-GUIDE.md) — architecture, modules, API, platform setup, settings, safety and known gaps
+- [Installation guide](docs/INSTALLATION.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Implementation status](docs/IMPLEMENTATION-STATUS.md)
+- [Security](docs/SECURITY.md)
+- [Roadmap](docs/ROADMAP.md)
 
 ## Configuration and safety
 
-- Python 3.10+ and Node.js 20+ recommended. No Docker, API key, LLM or paid service required.
-- Backend defaults to loopback-only. LAN mode is opt-in and has no remote authentication/TLS; never expose port 8766 to the public internet.
-- Tools are allowlisted and approval-gated. Shell execution and protected-source self-modification are disabled.
-- Evolution changes bounded strategy parameters; candidate validation and explicit approval are required.
-- SQLite data is stored in `data/mojo_agent.sqlite3`; back up the `data/` directory.
+- Python 3.10+ and Node.js 20+ recommended.
+- No Docker, API key, LLM or paid service required for the main baseline.
+- Backend binds to loopback by default. LAN mode has no remote authentication/TLS; do not expose it to the public internet.
+- Tool approval is mandatory. Shell execution and protected-source self-modification are disabled.
+- Evolution can propose bounded strategy parameters only; candidate validation and explicit approval are required.
+- SQLite database: `data/mojo_agent.sqlite3`. Back up the `data/` directory while the backend is stopped.
 
-## Testing
+## Tests and builds
 
-```bash
-.venv/bin/python -m pytest -q
-cd frontend && npm run build
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+cd frontend
+npm run build
 gradle --no-daemon -p android :app:assembleDebug
 ```
-Windows backend test: `.venv\Scripts\python.exe -m pytest -q`.
+
+The frontend/backend CI and Android debug APK CI passed for main commit `3c41501a0a0109b924af74f1bbe888c29b0abf56`. CI success is not a substitute for physical-device testing.
 
 ## Optional LiteRT-LM CLI
 
