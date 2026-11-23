@@ -74,3 +74,18 @@ def test_chat_settings_validation():
     assert client.post("/api/v1/settings/validate", json={"chat_default_mode": "litertlm"}).status_code == 200
     assert client.post("/api/v1/settings/validate", json={"chat_default_mode": "cloud"}).status_code == 400
     assert client.post("/api/v1/settings/validate", json={"chat_max_history": 99}).status_code == 422
+
+def test_local_model_catalog_validation_and_selection(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    class FakeRuntime:
+        def status(self):
+            return {"available": True, "huggingface_repo_cli_available": True, "local_model_cli_available": True}
+    monkeypatch.setattr(api, "agent_runtime", SimpleNamespace(model_runtime=FakeRuntime()))
+    added = client.post("/api/v1/chat/models", json={"label": "Tiny model", "model_id": "acme/tiny-model", "backend": "cpu"})
+    assert added.status_code == 200
+    catalog = client.get("/api/v1/chat/models").json()
+    assert any(item.get("model_id") == "acme/tiny-model" for item in catalog["items"])
+    selected = client.post("/api/v1/chat/models/" + added.json()["id"] + "/select", json={})
+    assert selected.status_code == 200
+    assert api.settings.get()["litertlm_model"] == "acme/tiny-model"
+    assert client.delete("/api/v1/chat/models/" + added.json()["id"]).json()["deleted"] is True
