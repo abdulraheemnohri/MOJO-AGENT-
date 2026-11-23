@@ -6,7 +6,7 @@ Algorithm-first, local-first autonomous agent runtime. **No LLM is required or l
 
 ### Windows 10/11 (PowerShell)
 ```powershell
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install_all.ps1
@@ -15,7 +15,7 @@ Start in two terminals: ` .\scripts\run_backend.ps1 ` and ` .\scripts\run_fronte
 
 ### Linux / macOS
 ```bash
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_all.sh
@@ -27,7 +27,7 @@ Install Termux from a current trusted distribution, then:
 ```bash
 pkg update && pkg upgrade -y
 pkg install -y git python nodejs-lts
-git clone --branch implementation/full-platform https://github.com/abdulraheemnohri/MOJO-AGENT-.git
+git clone https://github.com/abdulraheemnohri/MOJO-AGENT-.git
 cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_termux.sh
@@ -64,6 +64,10 @@ cd frontend && npm run build
 gradle --no-daemon -p android :app:assembleDebug
 ```
 Windows backend test: `.venv\Scripts\python.exe -m pytest -q`.
+
+## Optional LiteRT-LM CLI
+
+Install with `python -m pip install --upgrade litert-lm` inside the MOJO AGENT virtual environment. Check availability using `mojo-agent litertlm status`. See [docs/LITERTLM.md](docs/LITERTLM.md) for model execution, benchmarking and API configuration. It remains disabled by default.
 
 ## Platform boundaries
 

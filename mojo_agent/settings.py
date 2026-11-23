@@ -18,6 +18,9 @@ class SettingsStore:
   allowed={'theme','tool_approval_required','runtime_mode','litertlm_enabled','litertlm_backend','litertlm_timeout_seconds','litertlm_model'}
   if set(values)-allowed:raise ValueError('Unsupported or restart-only setting')
   if 'theme' in values and values['theme'] not in {'dark','light','system'}:raise ValueError('theme must be dark, light or system')
+  if 'litertlm_enabled' in values and not isinstance(values['litertlm_enabled'],bool):raise ValueError('litertlm_enabled must be boolean')
+  if 'litertlm_backend' in values and values['litertlm_backend'] not in {'cpu','gpu'}:raise ValueError('litertlm_backend must be cpu or gpu')
+  if 'litertlm_timeout_seconds' in values and (not isinstance(values['litertlm_timeout_seconds'],int) or not 10<=values['litertlm_timeout_seconds']<=180):raise ValueError('litertlm_timeout_seconds must be between 10 and 180')
   if values.get('tool_approval_required') is False:raise ValueError('Tool approval is mandatory and cannot be disabled')
   if 'tool_approval_required' in values and not isinstance(values['tool_approval_required'],bool):raise ValueError('tool_approval_required must be boolean')
   if 'runtime_mode' in values and values['runtime_mode'] not in {'algorithms','hybrid','litertlm'}:raise ValueError('runtime_mode must be algorithms, hybrid or litertlm')
