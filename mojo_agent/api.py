@@ -285,7 +285,7 @@ def worker_status():
  prefs=settings.get()
  return {'enabled':prefs['worker_enabled'],'poll_seconds':prefs['worker_poll_seconds'],'batch_size':prefs['worker_batch_size'],
   'thread_alive':bool(WORKER_THREAD and WORKER_THREAD.is_alive()),'processing_active':bool(prefs['worker_enabled'] and WORKER_THREAD and WORKER_THREAD.is_alive()),'worker_id':WORKER_ID,'queue':{
-   'queued':sum(1 for j in workflows.list_jobs(200,'queued')),'running':sum(1 for j in workflows.list_jobs(200,'running'))}}
+   'queued':workflows.job_counts()['queued'],'running':workflows.job_counts()['running']}}
 @app.post('/api/v1/worker/tick')
 def worker_tick(req:WorkerTickInput):
  try:return workflows.worker_tick(tools,req.worker_id,limit=req.limit)
