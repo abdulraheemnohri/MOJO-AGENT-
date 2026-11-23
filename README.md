@@ -65,6 +65,10 @@ gradle --no-daemon -p android :app:assembleDebug
 ```
 Windows backend test: `.venv\Scripts\python.exe -m pytest -q`.
 
+## Workflow engine and database recovery
+
+The durable job queue, optional background worker, retry/cancellation behavior, schema migrations and verified SQLite restore flow are documented in [Workflow Jobs and Database Recovery](docs/WORKFLOW-JOBS-AND-DATABASE.md).
+
 ## Platform boundaries
 
 Python is the supported reference backend. React/Vite is the browser dashboard. Kotlin/Jetpack Compose is the Android client. Android can also host the backend via Termux. There is no native iOS client, Windows executable installer, or production-hardened remote server in this release. Mojo compiler integration remains experimental.
