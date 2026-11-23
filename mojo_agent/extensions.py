@@ -119,7 +119,7 @@ class GitHubExtensionRegistry:
             item=dict(zip(keys,row)); manifest=json.loads(item.pop("manifest_json"))
             item["allowed_tools"]=manifest.get("tools",[]) if item["kind"]=="skill" else [manifest.get("operation")]
             items.append(item)
-        return items]
+        return items
 
     def uninstall(self, ident):
         with self.db() as conn: cur=conn.execute("DELETE FROM installed_extensions WHERE id=?",(ident,))
@@ -165,7 +165,7 @@ class GitHubExtensionRegistry:
                  for key,value in arguments.items()}
         try:
             result=self._run_operation(operation,arguments)
-            result_text=json.dumps(result,ensure_ascii=False,default=str)[:1000]
+            result_text=(json.dumps({"type":"string","length":len(result)}) if isinstance(result,str) else json.dumps({"type":"object","keys":sorted(result.keys())}) if isinstance(result,dict) else json.dumps({"type":type(result).__name__}))
             status="completed";error=""
         except Exception as exc:
             result=None;result_text="";status="failed";error=str(exc)[:500]
