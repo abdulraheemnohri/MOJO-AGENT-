@@ -314,7 +314,7 @@ def send_chat_message(conversation_id:str,req:ChatSendInput):
  except ValueError as exc:raise HTTPException(400,str(exc))
  try:
   chat_store.update(conversation_id,mode=mode,model=req.model or conversation['model'])
-  user_message=chat_store.add_message(conversation_id,'user',content,{'attachments':attachment_context})
+  user_message=chat_store.add_message(conversation_id,'user',content,{'attachments':[{'id':a['id'],'filename':a['filename']} for a in attachment_context]})
   history=chat_store.messages(conversation_id,prefs.get('chat_max_history',12)+1) or []
   if mode=='algorithms':
    tasks=decompose_goal(content)
