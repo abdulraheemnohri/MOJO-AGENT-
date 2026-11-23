@@ -156,6 +156,7 @@ class ChatStore:
         with self.connect() as conn:
             if not conn.execute("SELECT 1 FROM chat_conversations WHERE id=?",(conversation_id,)).fetchone(): return None
             cur=conn.execute("DELETE FROM chat_messages WHERE conversation_id=?",(conversation_id,))
+            conn.execute("DELETE FROM chat_attachments WHERE conversation_id=?",(conversation_id,))
             conn.execute("UPDATE chat_conversations SET updated_at=? WHERE id=?",(time.time(),conversation_id))
         return cur.rowcount
 
