@@ -2,13 +2,9 @@
 
 ## 1. Product definition
 
-MOJO AGENT is a local-first, algorithm-first agent runtime. The reference backend is Python/FastAPI with SQLite persistence. React/Vite is the browser dashboard; Kotlin/Jetpack Compose is the Android client. The default configuration has no LLM, API key, Docker, paid service, or cloud dependency.
+MOJO AGENT is a local-first, algorithm-first agent runtime. Python/FastAPI is the supported reference backend, React/Vite is the browser dashboard, and Kotlin/Jetpack Compose is the Android client. The default mode is deterministic Algorithms: no LLM, API key, Docker, paid service or cloud account is required.
 
-The original project profile is retained:
-- Architecture: evolutionary, with a protected control core
-- Platforms: Windows, Linux, macOS, Android/Termux and browser
-- Learning: bounded evolutionary optimization, not unrestricted self-training
-- LLM: none by default
+Optional local model inference is isolated behind the LiteRT-LM adapter and explicit operator approval. The deterministic plan remains authoritative; model output is advisory and does not execute tools.
 
 ## 2. Architecture and trust boundaries
 
@@ -17,77 +13,87 @@ React/Vite dashboard ─────┐
                           ├── HTTP / JSON ── FastAPI control API
 Android Compose client ───┘                       │
                                                   ├── deterministic planner / algorithms
-                                                  ├── allowlisted tool registry
-                                                  ├── workflow engine and manual scheduler tick
-                                                  ├── bounded evolution + candidate validation
+                                                  ├── allowlisted tools + approval gate
+                                                  ├── workflow definitions + SQLite job queue
+                                                  ├── opt-in worker + recurring schedules
+                                                  ├── bounded evolutionary candidates
                                                   ├── memory / knowledge graph / analytics
-                                                  ├── settings / diagnostics / security status
-                                                  └── SQLite database
+                                                  ├── optional LiteRT-LM advisory runtime
+                                                  ├── JSON-only extension registry
+                                                  └── SQLite migrations / backup / restore
 ```
 
-The control core is the policy enforcement boundary. Evolution may propose bounded strategy parameters; it must not rewrite source code, binaries, permissions, tool allowlists, or security policy. Candidate validation and explicit approval are required before activation. Shell execution is disabled. The API does not expose arbitrary Python evaluation.
+The control core is the policy boundary. Evolution may propose bounded strategy parameters; it must not rewrite source code, binaries, permissions, tool allowlists or security policy. Tool execution requires explicit approval. Arbitrary shell execution, arbitrary Python evaluation, dynamic extension imports and remote code execution are not supported.
 
-## 3. Implemented backend modules
+## 3. Implemented backend areas
 
-| Module | Responsibility |
+| Area | Current responsibility |
 |---|---|
-| `algorithms.py` | Deterministic graph/search and utility algorithms, similarity and Q-value update helpers |
-| `planner.py` | Goal decomposition and dependency ordering |
-| `evolution.py` | Bounded strategy candidate generation and evaluation |
-| `evolution_store.py` | Persisted champion, generation and candidates |
-| `memory.py` | SQLite memory CRUD, search and JSON import/export |
-| `knowledge.py` | Knowledge graph node/edge CRUD and search |
-| `workflows.py` | Workflow definitions, bounded step execution, schedules and run history |
-| `tools.py` | Allowlisted deterministic tools with approval checks |
-| `analytics.py` | Persistent, bounded event analytics |
-| `settings.py` | Validated persistent preferences; protected safety defaults |
-| `security.py` | Security policy/status helpers |
-| `api.py` | FastAPI routes, request telemetry, diagnostics and runtime status |
-| `cli.py` | `mojo-agent` command entry point |
-| `litertlm.py` | Optional integration on the separate LiteRT-LM feature branch / PR #4; not part of the verified main-branch baseline |
+| Planning and algorithms | Deterministic goal decomposition, dependency ordering and utility algorithms |
+| Evolution | Bounded strategy candidates, validation and explicit approval |
+| Memory and knowledge | SQLite memory CRUD/search/import/export and knowledge graph nodes/edges |
+| Tools | Built-in allowlisted deterministic operations with approval checks |
+| Workflows | Up to 50 ordered steps; text, calculator, text statistics and safe template mappings |
+| Conditions | equals, not_equals, contains and truthy checks against earlier workflow steps |
+| Durable jobs | Immutable step snapshots, queue capacity bound, retries/backoff, cancellation, recovery and history |
+| Worker and schedules | Opt-in backend worker, bounded polling/batches, manual worker tick and recurring schedule definitions |
+| Database | Schema version/migrations, status, backup export/inspection and loopback-only verified restore |
+| Security | Optional bearer token auth, hashed token storage, rotation/revocation and security status |
+| Optional models | Algorithms/Hybrid/LiteRT-LM modes, approval-gated local inference and benchmark endpoints |
+| Extensions | Public JSON manifests, preview/hash verification, install/list/uninstall and allowlisted skill operations |
+| Operations | Runtime status, diagnostics, bounded metadata-only logs, analytics and validated settings |
 
-## 4. API surface on main
+The SQLite queue is for one backend host. It is not a distributed queue. A running job checks cancellation between steps; an active operation is not forcibly interrupted by the queue.
+
+## 4. API surface
 
 Base URL: `http://127.0.0.1:8766/api/v1`
 
-- Runtime: `GET /health`, `GET /runtime/status`, `GET /runtime/logs`, `POST /runtime/logs/clear`, `GET /backup/export`
-- Discovery and planning: `GET /discovery`, `POST /plan`, `POST /algorithms/q-update`
-- Memory: `GET|POST /memory`, `PATCH|DELETE /memory/{memory_id}`, `GET /memory/export`, `POST /memory/import`
-- Evolution: `GET /evolution/status`, `POST /evolution/experiment`, candidate validate and approve routes
-- Tools: `GET /tools`, `POST /tools/execute`
-- Workflows: list/create/update/delete, run, and history routes
-- Scheduler: list/create/update/delete schedules and explicit `POST /scheduler/tick`
-- Knowledge graph: list/search, create nodes/edges, delete nodes/edges
-- Operations: analytics, diagnostics, security status, settings read/update/validation
+The interactive OpenAPI page is available at `http://127.0.0.1:8766/docs` while the backend is running.
 
-The scheduler is manually ticked; it is not a continuously running background service. Workflow execution is synchronous and bounded.
+- Runtime: health, runtime status, diagnostics and bounded runtime logs.
+- Planning: goal plan, deterministic agent run and algorithm utilities.
+- Memory: CRUD, search, import and export.
+- Evolution: experiment, candidate validation and approval.
+- Tools: list and approval-gated execution.
+- Workflows: CRUD, direct run, history, schedules and manual scheduler tick.
+- Durable jobs: enqueue, list/get, cancel, retry, worker tick and worker status.
+- Database: migration/status, backup export, backup inspect and restore.
+- Security: status, loopback bootstrap, token rotation and revocation.
+- LiteRT-LM: status, run and benchmark.
+- Extensions and skills: GitHub manifest preview/install, list/uninstall, skill plan, allowlisted skill execution and execution history.
+- Analytics and settings: persistent analytics, settings validation/read/update and diagnostics.
+
+Consult FastAPI OpenAPI for exact request/response schemas; do not rely on this guide as a substitute for the running API schema.
 
 ## 5. Frontend dashboard
 
-The Vite/React dashboard provides navigation for Overview, Agent Studio, Tasks & Planner, Intelligence Lab, Evolution Lab, Memory Center, Tools & Skills, Workflows, Knowledge Graph, Analytics, Security, Diagnostics, Runtime Logs, Backend Control and Settings.
+The React/Vite dashboard includes overview, agent/planner, intelligence/evolution, memory, tools/skills, workflow composition, knowledge graph, analytics, security, diagnostics, runtime logs, backend control and settings. It includes responsive desktop/mobile navigation, theme and density preferences, reduced-motion support, workflow queue controls, runtime/model controls, extension management and database maintenance controls.
 
-The current responsive stylesheet provides desktop sidebar navigation, mobile drawer behavior, responsive grids/cards/forms, light/dark theme styling, compact density, reduced-motion support and breakpoints for phone/tablet/desktop. Some page logic remains concentrated in `App.tsx`; this is functional but should be refactored into feature-level components as the next maintainability milestone.
-
-Local browser preferences include API base URL, theme-related UI state, density, hints, auto-refresh interval and reduced motion. Browser-local preferences are separate from backend SQLite settings.
+Some feature logic remains concentrated in `frontend/src/App.tsx`. The dashboard is functional but still needs component-level decomposition and broader automated UI coverage.
 
 ## 6. Android application
 
-- Native Kotlin + Jetpack Compose client; min SDK 26, target SDK 35, Java 17.
-- Uses OkHttp to call the configured FastAPI backend.
-- Adaptive navigation includes compact phone navigation and a wider navigation layout.
-- Backend discovery scans the current local Wi-Fi subnet for the MOJO health endpoint.
-- The APK is a client only; the Python backend is not bundled into the APK.
-- USB workflow: `adb reverse tcp:8766 tcp:8766`, then use `http://127.0.0.1:8766/api/v1`.
-- Android emulator workflow: `http://10.0.2.2:8766/api/v1`.
-- Same-LAN workflow requires starting the backend on a trusted LAN interface and permitting TCP 8766 on the private firewall.
+- Native Kotlin + Jetpack Compose client.
+- Adaptive phone navigation and backend configuration/discovery.
+- Workflow queue controls, worker settings, runtime/model and extension screens, security token support and backend status.
+- Android emulator backend URL: `http://10.0.2.2:8766/api/v1`.
+- USB: run `adb reverse tcp:8766 tcp:8766`, then use `http://127.0.0.1:8766/api/v1`.
+- Same trusted Wi-Fi: configure the backend on a trusted private LAN interface and use backend discovery.
+- The APK is a client only; it does not bundle the Python server, model weights or LiteRT-LM CLI. A backend can be hosted separately through Termux.
 
-Known Android limitation: the current client is still centered in one large Compose activity and includes a raw JSON response view. Native file selection, structured list/detail experiences for every resource, full workflow editing and broader accessibility/UI test coverage remain future work.
+Known Android limitation: UI logic remains centered in a large Compose activity. Native file selection, structured list/detail experiences for every resource and comprehensive UI/accessibility tests remain outstanding.
 
-## 7. Settings and safety
+## 7. Security and data safety
 
-Backend settings currently persist supported preferences such as theme. Tool approval is mandatory and cannot be disabled. Runtime host/port are restart-time configuration, not live settings. The default backend binding is loopback. LAN mode has no remote authentication or TLS and must not be exposed to the public internet.
-
-Do not put secrets, passwords, OTPs, provider API keys or private data in runtime logs. Request telemetry records route/method/status/timing metadata, not request bodies.
+- Backend defaults to loopback.
+- Bearer-token authentication is opt-in. The token is high entropy; only a salted digest is stored. Rotation invalidates the previous token.
+- Initial token bootstrap, rotation, revocation and database restore are loopback-restricted.
+- Database restore validates integrity, enforces a 128 MiB streaming request cap, supports optional SHA-256 verification and creates a safety backup.
+- The worker is opt-in. Queue snapshots prevent later workflow edits from changing already-enqueued work.
+- Runtime telemetry records request metadata, not request bodies.
+- TLS termination, public internet hardening, rate limiting and multi-user RBAC are not included. Do not expose the backend directly to the public internet.
+- Back up the SQLite database while the backend is stopped when using manual file copies. Prefer the API backup export for a consistent SQLite snapshot.
 
 ## 8. Install and run
 
@@ -100,7 +106,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install_all.ps1
 ```
 
-Start two PowerShell windows:
+Start two PowerShell terminals:
 
 ```powershell
 .\scripts\run_backend.ps1
@@ -110,6 +116,8 @@ Start two PowerShell windows:
 Dashboard: http://127.0.0.1:5173  
 API docs: http://127.0.0.1:8766/docs
 
+Optional Windows startup helper: `scripts/install_windows_service.ps1` creates a per-user Task Scheduler task. It is not a native Windows service or an EXE/MSI installer.
+
 ### Linux / macOS
 
 ```bash
@@ -118,7 +126,7 @@ cd MOJO-AGENT-
 chmod +x scripts/*.sh
 ./scripts/install_all.sh
 ./scripts/run_backend.sh
-# In a second terminal:
+# In another terminal:
 ./scripts/run_frontend.sh
 ```
 
@@ -134,61 +142,46 @@ chmod +x scripts/*.sh
 ./scripts/run_termux_backend.sh
 ```
 
-Open a second Termux session and run `./scripts/run_termux_frontend.sh`. Then visit http://127.0.0.1:5173 on the phone.
+Open a second Termux session and run `./scripts/run_termux_frontend.sh`, then visit http://127.0.0.1:5173.
 
 ### Android APK
 
-Download the `mojo-agent-debug-apk` artifact from the successful [Android APK workflow](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/workflows/android-apk.yml). Enable installation for the app used to open the APK. For development builds:
+Use the [Android APK workflow](https://github.com/abdulraheemnohri/MOJO-AGENT-/actions/workflows/android-apk.yml) and download the artifact from a successful run. A debug APK is not a signed production release.
 
-```bash
-gradle --no-daemon -p android :app:assembleDebug
-```
+## 9. Optional LiteRT-LM runtime
 
-## 9. Validation commands
+The default Algorithms mode does not load a model. To use local model inference, enable the runtime in Settings and install the native `litert-lm` CLI in the backend Python environment. Local `.litertlm` bundles use that CLI. Hugging Face repository IDs use the separate LiteRT CLI wrapper and may require Python 3.13 plus `litert-cli-nightly`; see `docs/HYBRID-RUNTIME-AND-EXTENSIONS.md`.
+
+Model downloads can be large. Local offline inference requires the model artifacts to already be present. CPU is the portable baseline; GPU support depends on host drivers, runtime and model compatibility. Actual inference must be tested on the target machine.
+
+## 10. Validation and release state
+
+Run locally:
 
 ```powershell
-# Windows backend
 .\.venv\Scripts\python.exe -m pytest -q
-
-# Frontend
 cd frontend
+npm install
 npm run build
-
-# Android
+cd ..
 gradle --no-daemon -p android :app:assembleDebug
 ```
 
-The frontend/backend workflow and Android APK workflow were successful for main commit `3c41501a0a0109b924af74f1bbe888c29b0abf56`. This is CI evidence, not a claim of physical-device testing on every Android model or OS.
+The last inspected main commit, `094bd0e53dbc9e51bffa1decf79cd48ce5192454`, had a failed Python CI job because two LiteRT-LM API request schemas were missing. Frontend and installer jobs passed. The missing schema definitions and regression tests are being added on a follow-up branch. Do not call this state release-verified until all CI workflows pass on the final merge commit.
 
-## 10. Known gaps — do not mistake roadmap for shipped functionality
+CI success is not a substitute for physical-device testing, Windows smoke testing, backup/restore testing or a real local model inference check.
+
+## 11. Known gaps
 
 1. No native iOS client.
-2. No bundled Python backend in Android APK; Termux is a separate backend deployment.
-3. No production remote-authentication/TLS layer; LAN mode is trusted-network development use only.
-4. No persistent background worker/daemon for scheduled workflows; scheduler tick is manual.
-5. Workflow execution is synchronous, not a distributed queue.
-6. Android native file picker, complete structured resource screens, full workflow editor and UI tests need implementation.
-7. React dashboard page logic should be split into reusable feature components and tested with component-level tests.
-8. Database restore and a safe migration/rollback manager are not implemented; export/backup is available.
-9. Mojo compiler integration is experimental; Python is the supported reference backend.
-10. LiteRT-LM integration is optional and currently isolated on open PR #4; it is not a dependency of the no-LLM main baseline.
+2. No native Windows EXE/MSI installer.
+3. No production-ready public remote server: TLS, rate limiting, multi-user RBAC and public exposure hardening remain out of scope.
+4. No distributed queue or multi-host worker coordination.
+5. Frontend and Android component decomposition and broad UI automation remain incomplete.
+6. Native Android file picking and structured detail views for every resource remain incomplete.
+7. Real LiteRT-LM inference depends on model/runtime/driver compatibility and needs host-specific verification.
+8. Mojo compiler integration remains experimental; Python is the supported reference backend.
 
-## 11. Development priorities
+## 12. Licensing and support
 
-P0: authentication/TLS before any remote/LAN exposure; API request size/rate limits; automated dependency/security scans; backup restore/migration tests.  
-P1: split Android Compose screens and React feature components; add UI tests, accessibility semantics, loading/error/empty states and robust API retry handling.  
-P2: background scheduler with persisted leases and crash recovery; workflow cancellation and idempotency; database migration framework.  
-P3: optional local model adapters only behind explicit opt-in, bounded resource budgets and the existing protected control core.
-
-## 12. Licensing and contributions
-
-The package metadata declares Apache-2.0. Keep new modules tested, preserve the control-core boundary, and document platform-specific requirements. Donations can be added as a voluntary support option without locking core functionality behind a subscription.
-
-
-## New runtime and extensions layer
-
-The feature branch adds `mojo_agent/agent_runtime.py`, `mojo_agent/litertlm.py` and `mojo_agent/extensions.py`. Algorithms remain the default. Hybrid mode computes a deterministic plan first and optionally requests advisory local model output. Inference requires explicit approval. Runtime preferences include mode, enable flag, model path/repository, CPU/GPU backend and bounded timeout.
-
-GitHub extensions install from public declarative JSON manifests. Preview exposes the SHA-256 digest; installation must submit the exact preview hash to prevent installing a changed manifest. Skills store bounded instructions and approved built-in operation names. Skill runs return the instructions and deterministic plan; they do not auto-execute tools. Tool manifests can only select built-in safe operations. No repository source, shell script or binary is executed.
-
-New API routes: `GET /agent/runtime`, `POST /agent/run`, `GET /litertlm/status`, `POST /litertlm/run`, `POST /litertlm/benchmark`, `GET /extensions`, `POST /extensions/github/preview`, `POST /extensions/github/install`, `DELETE /extensions/{extension_id}`, `POST /skills/{name}/run`, and `POST /tools/installed/{name}/execute`.
+The package metadata declares Apache-2.0. Voluntary donations can support development without locking core functionality behind a subscription. Keep changes tested, preserve the control-core boundary and document platform-specific requirements.
