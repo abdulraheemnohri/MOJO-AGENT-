@@ -4,6 +4,7 @@ import os
 import sqlite3
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 class DatabaseManager:
@@ -77,20 +78,33 @@ class DatabaseManager:
 
     def restore_payload(self, payload, expected_sha256=None):
         info = self.inspect_payload(payload)
-        if expected_sha256 and not hashlib.sha256(payload).hexdigest().lower() == expected_sha256.lower():
+        digest = hashlib.sha256(payload).hexdigest()
+        if expected_sha256 and digest.lower() != expected_sha256.lower():
             raise ValueError("backup SHA-256 does not match the supplied checksum")
         parent = str(Path(self.path).parent)
         fd, temp_path = tempfile.mkstemp(prefix="mojo-restore-", suffix=".sqlite3", dir=parent)
         os.close(fd)
-        backup_path = self.path + ".pre-restore-" + str(int(time.time())) + ".bak"
+        backup_path = self.path + ".pre-restore-" + str(int(time.time())) + "-" + uuid.uuid4().hex[:8] + ".bak"
+        replaced = False
         try:
             Path(temp_path).write_bytes(payload)
             if os.path.exists(self.path):
-                with sqlite3.connect(self.path, timeout=15) as source, sqlite3.connect(backup_path) as target:
-                    source.backup(target)
+                with sqlite3.connect(self.path, timeout=15) as source:
+                    try: source.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    except sqlite3.DatabaseError: pass
+                    with sqlite3.connect(backup_path) as target:
+                        source.backup(target)
+            for suffix in ("-wal", "-shm"):
+                sidecar = self.path + suffix
+                if os.path.exists(sidecar): os.unlink(sidecar)
             os.replace(temp_path, self.path)
+            replaced = True
             migration = self.migrate()
             return {**info, "restored": True, "safety_backup": os.path.basename(backup_path) if os.path.exists(backup_path) else None, "migration": migration}
+        except Exception:
+            if replaced and os.path.exists(backup_path):
+                os.replace(backup_path, self.path)
+            raise
         finally:
             try:
                 if os.path.exists(temp_path): os.unlink(temp_path)
