@@ -14,11 +14,12 @@ from .analytics import Analytics
 from .settings import SettingsStore
 from .extensions import GitHubExtensionRegistry, ExtensionError
 from .agent_runtime import AgentRuntime
-from .litertlm import LiteRTLM, LiteRTLMError\nfrom .database import DatabaseManager
+from .litertlm import LiteRTLM, LiteRTLMError
+from .database import DatabaseManager
 import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
-memory=MemoryStore();database=DatabaseManager(str(MemoryStore().path));database.migrate();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
+memory=MemoryStore();database=DatabaseManager(str(memory.path));database.migrate();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
 WORKER_STOP=threading.Event()
 WORKER_THREAD=None
 WORKER_ID="mojo-background-worker"
