@@ -19,6 +19,35 @@ import math,uuid,time,platform,os,sqlite3,threading,hashlib,ipaddress
 app=FastAPI(title='MOJO AGENT API',version='0.9.0',description='Local algorithmic agent runtime; no LLM required.')
 app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://localhost:4173'],allow_credentials=False,allow_methods=['GET','POST','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type'])
 memory=MemoryStore();evolution=EvolutionEngine();evolution_store=EvolutionStore();evolution.champion=evolution_store.get_champion();evolution.generation=evolution_store.get_generation();tools=ToolRegistry();workflows=WorkflowStore();knowledge=KnowledgeGraph();analytics=Analytics();settings=SettingsStore();extensions=GitHubExtensionRegistry();agent_runtime=AgentRuntime(LiteRTLM(timeout_seconds=settings.get()['litertlm_timeout_seconds']));candidate_registry={};RUNTIME_STARTED_AT=time.time();RUNTIME_LOGS=[];RUNTIME_LOG_LOCK=threading.Lock();RUNTIME_LOG_LIMIT=500
+WORKER_STOP=threading.Event()
+WORKER_THREAD=None
+WORKER_ID="mojo-background-worker"
+
+def _worker_loop():
+ while not WORKER_STOP.is_set():
+  try:
+   prefs=settings.get()
+   if prefs.get('worker_enabled'):
+    workflows.worker_tick(tools,WORKER_ID,limit=prefs.get('worker_batch_size',3))
+   WORKER_STOP.wait(max(1,min(60,int(prefs.get('worker_poll_seconds',2)))))
+  except Exception as exc:
+   _record_runtime_log('ERROR','Background worker cycle failed: '+str(exc)[:200])
+   WORKER_STOP.wait(2)
+
+@app.on_event("startup")
+def start_background_worker():
+ global WORKER_THREAD
+ workflows.recover_interrupted()
+ if WORKER_THREAD is None or not WORKER_THREAD.is_alive():
+  WORKER_STOP.clear()
+  WORKER_THREAD=threading.Thread(target=_worker_loop,name=WORKER_ID,daemon=True)
+  WORKER_THREAD.start()
+
+@app.on_event("shutdown")
+def stop_background_worker():
+ WORKER_STOP.set()
+ if WORKER_THREAD and WORKER_THREAD.is_alive():WORKER_THREAD.join(timeout=3)
+
 
 def _record_runtime_log(level,message,method=None,path=None,status=None,duration_ms=None):
  entry={'time':time.time(),'level':level,'message':message,'method':method,'path':path,'status':status,'duration_ms':duration_ms}
