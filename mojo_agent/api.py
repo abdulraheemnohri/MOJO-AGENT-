@@ -31,7 +31,9 @@ class MemoryInput(BaseModel):content:str=Field(min_length=1,max_length=10000);ki
 class QInput(BaseModel):q:float;reward:float;next_max:float=0;alpha:float=Field(default=.1,ge=0,le=1);gamma:float=Field(default=.95,ge=0,le=1)
 class WorkflowInput(BaseModel):name:str=Field(min_length=1,max_length=120);steps:list[dict]=Field(min_length=1,max_length=50)
 class ScheduleInput(BaseModel):workflow_id:str;interval_seconds:int=Field(ge=60,le=2592000)
-class ScheduleEnabledInput(BaseModel):enabled:bool\nclass WorkflowEnqueueInput(BaseModel):max_attempts:int=Field(default=3,ge=1,le=10)\nclass WorkerTickInput(BaseModel):limit:int=Field(default=5,ge=1,le=10);worker_id:str=Field(default='manual-worker',min_length=1,max_length=80)
+class ScheduleEnabledInput(BaseModel):enabled:bool
+class WorkflowEnqueueInput(BaseModel):max_attempts:int=Field(default=3,ge=1,le=10)
+class WorkerTickInput(BaseModel):limit:int=Field(default=5,ge=1,le=10);worker_id:str=Field(default='manual-worker',min_length=1,max_length=80)
 class NodeInput(BaseModel):label:str=Field(min_length=1,max_length=300);kind:str='concept';properties:dict={}
 class EdgeInput(BaseModel):source:str;target:str;relation:str='related_to';weight:float=Field(default=1,ge=0,le=100)
 class ToolInput(BaseModel):name:str;arguments:dict={};approved:bool=False
