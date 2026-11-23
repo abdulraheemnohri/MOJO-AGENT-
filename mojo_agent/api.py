@@ -284,7 +284,7 @@ def retry_workflow_job(job_id:str):
 def worker_status():
  prefs=settings.get()
  return {'enabled':prefs['worker_enabled'],'poll_seconds':prefs['worker_poll_seconds'],'batch_size':prefs['worker_batch_size'],
-  'thread_alive':bool(WORKER_THREAD and WORKER_THREAD.is_alive()),'worker_id':WORKER_ID,'queue':{
+  'thread_alive':bool(WORKER_THREAD and WORKER_THREAD.is_alive()),'processing_active':bool(prefs['worker_enabled'] and WORKER_THREAD and WORKER_THREAD.is_alive()),'worker_id':WORKER_ID,'queue':{
    'queued':sum(1 for j in workflows.list_jobs(200,'queued')),'running':sum(1 for j in workflows.list_jobs(200,'running'))}}
 @app.post('/api/v1/worker/tick')
 def worker_tick(req:WorkerTickInput):
