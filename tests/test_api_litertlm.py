@@ -33,3 +33,12 @@ def test_litertlm_settings_persist(tmp_path):
         assert saved["litertlm_backend"]=="gpu"
     finally:
         api.settings=original
+
+
+def test_litertlm_request_schemas_validate_required_fields_and_backend():
+    invalid_backend=client.post("/api/v1/litertlm/run",json={"model":"org/model","prompt":"hello","backend":"remote","approved":True})
+    assert invalid_backend.status_code==422
+    missing_prompt=client.post("/api/v1/litertlm/run",json={"model":"org/model","approved":True})
+    assert missing_prompt.status_code==422
+    missing_model=client.post("/api/v1/litertlm/benchmark",json={"approved":True})
+    assert missing_model.status_code==422
