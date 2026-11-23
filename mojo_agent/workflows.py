@@ -10,6 +10,13 @@ class WorkflowStore:
    c.execute("CREATE TABLE IF NOT EXISTS workflows(id TEXT PRIMARY KEY,name TEXT,steps TEXT,created REAL,updated REAL)")
    c.execute("CREATE TABLE IF NOT EXISTS workflow_runs(id TEXT PRIMARY KEY,workflow_id TEXT,status TEXT,results TEXT,started REAL,finished REAL)")
    c.execute("CREATE TABLE IF NOT EXISTS workflow_schedules(id TEXT PRIMARY KEY,workflow_id TEXT NOT NULL,interval_seconds INTEGER NOT NULL,next_run REAL NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,created REAL NOT NULL,last_run REAL,last_status TEXT)")
+   c.execute("""CREATE TABLE IF NOT EXISTS workflow_jobs(
+    id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, workflow_name TEXT NOT NULL, steps TEXT NOT NULL,
+    status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3,
+    available_at REAL NOT NULL, created REAL NOT NULL, started REAL, finished REAL,
+    result TEXT NOT NULL DEFAULT '[]', error TEXT NOT NULL DEFAULT '',
+    cancel_requested INTEGER NOT NULL DEFAULT 0, worker_id TEXT NOT NULL DEFAULT '')""")
+   c.execute("CREATE INDEX IF NOT EXISTS idx_workflow_jobs_queue ON workflow_jobs(status,available_at,created)")
  def db(self):return sqlite3.connect(self.path,timeout=10)
  def _validate(self,name,steps):
   if not isinstance(name,str) or not name.strip() or len(name)>120:raise ValueError("workflow name must contain 1–120 characters")
@@ -111,3 +118,127 @@ class WorkflowStore:
    if workflow_id:rows=c.execute("SELECT id,workflow_id,status,results,started,finished FROM workflow_runs WHERE workflow_id=? ORDER BY started DESC LIMIT ?",(workflow_id,limit)).fetchall()
    else:rows=c.execute("SELECT id,workflow_id,status,results,started,finished FROM workflow_runs ORDER BY started DESC LIMIT ?",(limit,)).fetchall()
   return [{"id":r[0],"workflow_id":r[1],"status":r[2],"results":json.loads(r[3]),"started":r[4],"finished":r[5]} for r in rows]
+
+
+ # Durable queue: enqueue snapshots the workflow so later edits do not mutate queued work.
+ def enqueue(self,workflow_id,max_attempts=3,now=None):
+  if not isinstance(max_attempts,int) or isinstance(max_attempts,bool) or not 1<=max_attempts<=10:
+   raise ValueError("max_attempts must be between 1 and 10")
+  workflow=self.get(workflow_id)
+  if not workflow: raise KeyError("workflow not found")
+  stamp=time.time() if now is None else float(now);ident=str(uuid.uuid4())
+  with self.db() as c:
+   queued=c.execute("SELECT COUNT(*) FROM workflow_jobs WHERE status IN ('queued','running')").fetchone()[0]
+   if queued>=500: raise ValueError("workflow queue is full (500 active jobs maximum)")
+   c.execute("""INSERT INTO workflow_jobs(id,workflow_id,workflow_name,steps,status,attempts,max_attempts,available_at,created)
+    VALUES(?,?,?,?, 'queued',0,?,?,?)""",(ident,workflow_id,workflow["name"],json.dumps(workflow["steps"]),max_attempts,stamp,stamp))
+  return self.get_job(ident)
+
+ def _job_row(self,row):
+  return {"id":row[0],"workflow_id":row[1],"workflow_name":row[2],"steps":json.loads(row[3]),
+   "status":row[4],"attempts":row[5],"max_attempts":row[6],"available_at":row[7],
+   "created":row[8],"started":row[9],"finished":row[10],"result":json.loads(row[11]),
+   "error":row[12],"cancel_requested":bool(row[13]),"worker_id":row[14]}
+ def get_job(self,job_id):
+  with self.db() as c: row=c.execute("""SELECT id,workflow_id,workflow_name,steps,status,attempts,max_attempts,
+   available_at,created,started,finished,result,error,cancel_requested,worker_id FROM workflow_jobs WHERE id=?""",(job_id,)).fetchone()
+  return self._job_row(row) if row else None
+ def list_jobs(self,limit=100,status=None):
+  limit=max(1,min(int(limit),200))
+  with self.db() as c:
+   query="""SELECT id,workflow_id,workflow_name,steps,status,attempts,max_attempts,available_at,created,started,finished,result,error,cancel_requested,worker_id FROM workflow_jobs"""
+   args=[]
+   if status:
+    if status not in {"queued","running","completed","failed","cancelled"}: raise ValueError("invalid job status")
+    query+=" WHERE status=?";args.append(status)
+   query+=" ORDER BY created DESC LIMIT ?";args.append(limit)
+   rows=c.execute(query,args).fetchall()
+  return [self._job_row(row) for row in rows]
+ def cancel_job(self,job_id):
+  with self.db() as c:
+   row=c.execute("SELECT status FROM workflow_jobs WHERE id=?",(job_id,)).fetchone()
+   if not row:return None
+   if row[0]=="queued":
+    c.execute("UPDATE workflow_jobs SET status='cancelled',finished=?,error='Cancelled before execution' WHERE id=?",(time.time(),job_id))
+   elif row[0]=="running":
+    c.execute("UPDATE workflow_jobs SET cancel_requested=1 WHERE id=?",(job_id,))
+  return self.get_job(job_id)
+ def retry_job(self,job_id,now=None):
+  stamp=time.time() if now is None else float(now)
+  with self.db() as c:
+   row=c.execute("SELECT status,attempts,max_attempts FROM workflow_jobs WHERE id=?",(job_id,)).fetchone()
+   if not row:return None
+   if row[0] not in {"failed","cancelled"}:raise ValueError("only failed or cancelled jobs can be retried")
+   c.execute("""UPDATE workflow_jobs SET status='queued',attempts=0,available_at=?,started=NULL,finished=NULL,
+    result='[]',error='',cancel_requested=0,worker_id='' WHERE id=?""",(stamp,job_id))
+  return self.get_job(job_id)
+ def recover_interrupted(self,now=None):
+  stamp=time.time() if now is None else float(now)
+  with self.db() as c:
+   rows=c.execute("SELECT id,attempts,max_attempts FROM workflow_jobs WHERE status='running'").fetchall()
+   for ident,attempts,maximum in rows:
+    if attempts<maximum:
+     c.execute("""UPDATE workflow_jobs SET status='queued',available_at=?,started=NULL,worker_id='',
+      error='Recovered after worker interruption' WHERE id=?""",(stamp,ident))
+    else:
+     c.execute("""UPDATE workflow_jobs SET status='failed',finished=?,worker_id='',
+      error='Worker interrupted; retry limit reached' WHERE id=?""",(stamp,ident))
+  return {"recovered":len(rows),"jobs":[self.get_job(row[0]) for row in rows]}
+ def _execute_steps(self,steps,tools,job_id=None):
+  results=[]
+  for index,step in enumerate(steps):
+   if job_id:
+    job=self.get_job(job_id)
+    if not job or job["cancel_requested"]: raise InterruptedError("Job cancellation requested")
+   kind=step["type"]
+   if kind=="text":result=step.get("value","")
+   elif kind=="calculator":result=tools.execute(kind,{"expression":step["expression"]},approved=True)
+   else:result=tools.execute(kind,{"text":step.get("text","")},approved=True)
+   results.append({"step":index,"type":kind,"result":result})
+  return results
+ def claim_job(self,worker_id="local-worker",now=None):
+  stamp=time.time() if now is None else float(now)
+  with self.db() as c:
+   c.execute("BEGIN IMMEDIATE")
+   row=c.execute("""SELECT id FROM workflow_jobs WHERE status='queued' AND available_at<=?
+    ORDER BY created LIMIT 1""",(stamp,)).fetchone()
+   if not row:c.commit();return None
+   ident=row[0]
+   changed=c.execute("""UPDATE workflow_jobs SET status='running',attempts=attempts+1,started=?,
+    worker_id=?,cancel_requested=0 WHERE id=? AND status='queued'""",(stamp,worker_id,ident)).rowcount
+   c.commit()
+   if not changed:return None
+  return self.get_job(ident)
+ def execute_job(self,job_id,tools,now=None):
+  job=self.get_job(job_id)
+  if not job:raise KeyError("job not found")
+  if job["status"]!="running":raise ValueError("job must be claimed before execution")
+  stamp=time.time() if now is None else float(now)
+  try:
+   results=self._execute_steps(job["steps"],tools,job_id)
+   current=self.get_job(job_id)
+   if current and current["cancel_requested"]:status="cancelled";error="Cancelled during execution"
+   else:status="completed";error=""
+  except InterruptedError as exc:
+   results=[];status="cancelled";error=str(exc)
+  except Exception as exc:
+   results=[];error=str(exc)[:500]
+   status="queued" if job["attempts"]<job["max_attempts"] else "failed"
+  with self.db() as c:
+   if status=="queued":
+    delay=min(300,2**max(0,job["attempts"]-1))
+    c.execute("""UPDATE workflow_jobs SET status='queued',available_at=?,result=?,error=?,worker_id='',
+     started=NULL,cancel_requested=0 WHERE id=?""",(stamp+delay,json.dumps(results),error,job_id))
+   else:
+    c.execute("""UPDATE workflow_jobs SET status=?,finished=?,result=?,error=?,worker_id='',
+     cancel_requested=0 WHERE id=?""",(status,stamp,json.dumps(results),error,job_id))
+  return self.get_job(job_id)
+ def worker_tick(self,tools,worker_id="local-worker",now=None,limit=5):
+  if not isinstance(limit,int) or isinstance(limit,bool) or not 1<=limit<=10:
+   raise ValueError("worker batch limit must be 1..10")
+  stamp=time.time() if now is None else float(now);processed=[]
+  for _ in range(limit):
+   job=self.claim_job(worker_id,stamp)
+   if not job:break
+   processed.append(self.execute_job(job["id"],tools,stamp))
+  return {"worker_id":worker_id,"processed":len(processed),"jobs":processed,"checked_at":stamp}
