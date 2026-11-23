@@ -19,8 +19,8 @@ def test_migrations_are_idempotent(tmp_path):
     manager=DatabaseManager(str(tmp_path/"mojo.db"))
     first=manager.migrate()
     second=manager.migrate()
-    assert first["version"]==2 and first["applied"]==[1,2]
-    assert second["version"]==2 and second["applied"]==[]
+    assert first["version"]==3 and first["applied"]==[1,2,3]
+    assert second["version"]==3 and second["applied"]==[]
     assert manager.status()["up_to_date"] is True
 
 def test_backup_inspection_rejects_invalid_and_accepts_valid(tmp_path):
@@ -46,7 +46,7 @@ def test_restore_keeps_safety_copy_and_checks_checksum(tmp_path):
     result=manager.restore_payload(payload,hashlib.sha256(payload).hexdigest())
     assert result["restored"] is True
     assert result["safety_backup"]
-    assert manager.status()["version"]==2
+    assert manager.status()["version"]==3
 
 
 def test_backup_inspection_rejects_incomplete_application_schema(tmp_path):
