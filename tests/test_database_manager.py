@@ -6,8 +6,14 @@ def create_valid_db(path):
     with sqlite3.connect(path) as conn:
         conn.execute("CREATE TABLE app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
         conn.execute("CREATE TABLE workflows(id TEXT PRIMARY KEY,name TEXT,steps TEXT,created REAL,updated REAL)")
-        for table in sorted(DatabaseManager.REQUIRED_TABLES - {"app_settings", "workflows"}):
+        for table in sorted(DatabaseManager.REQUIRED_TABLES - {"app_settings", "workflows", "workflow_jobs"}):
             conn.execute(f"CREATE TABLE {table}(id TEXT PRIMARY KEY)")
+        conn.execute("""CREATE TABLE workflow_jobs(
+            id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, workflow_name TEXT NOT NULL, steps TEXT NOT NULL,
+            status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3,
+            available_at REAL NOT NULL, created REAL NOT NULL, started REAL, finished REAL,
+            result TEXT NOT NULL DEFAULT '[]', error TEXT NOT NULL DEFAULT '',
+            cancel_requested INTEGER NOT NULL DEFAULT 0, worker_id TEXT NOT NULL DEFAULT '')""")
 
 def test_migrations_are_idempotent(tmp_path):
     manager=DatabaseManager(str(tmp_path/"mojo.db"))
