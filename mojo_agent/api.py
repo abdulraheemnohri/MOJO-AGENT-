@@ -41,6 +41,7 @@ class AgentRunInput(BaseModel):goal:str=Field(min_length=1,max_length=2000);mode
 class GitHubExtensionInput(BaseModel):repository:str=Field(min_length=3,max_length=205);ref:str='main';manifest_path:str='mojo-extension.json'
 class GitHubInstallInput(GitHubExtensionInput):expected_sha256:str=Field(min_length=64,max_length=64)
 class InstalledToolInput(BaseModel):arguments:dict={};approved:bool=False
+class SkillExecutionInput(BaseModel):operation:str=Field(min_length=1,max_length=40);arguments:dict={};approved:bool=False
 @app.middleware("http")
 async def collect_safe_analytics(request, call_next):
  started=time.perf_counter()
@@ -393,6 +394,21 @@ def run_installed_skill(name:str,req:Goal):
  except KeyError:raise HTTPException(404,'Skill not installed')
  tasks=decompose_goal(req.goal);order=topological_order({task['id']:task['depends_on'] for task in tasks})
  return {'skill':name,'instructions':manifest['instructions'],'allowed_tools':manifest.get('tools',[]),'goal':req.goal,'algorithm_plan':{'tasks':tasks,'execution_order':order},'execution':'instructions and plan only; tools are not auto-executed'}
+
+@app.post('/api/v1/skills/{name}/execute')
+def execute_skill_tool(name:str,req:SkillExecutionInput):
+ try:
+  result=extensions.execute_skill(name,req.operation,req.arguments,req.approved)
+  analytics.record('skill_tool_executed',{'skill':name,'operation':req.operation,'status':result['status']})
+  return result
+ except PermissionError as exc:raise HTTPException(403,str(exc))
+ except KeyError:raise HTTPException(404,'Skill not installed')
+ except ExtensionError as exc:raise HTTPException(400,str(exc))
+
+@app.get('/api/v1/skills/{name}/history')
+def get_skill_history(name:str,limit:int=50):
+ try:return {'items':extensions.skill_history(name,limit)}
+ except KeyError:raise HTTPException(404,'Skill not installed')
 
 
 @app.post('/api/v1/litertlm/benchmark')

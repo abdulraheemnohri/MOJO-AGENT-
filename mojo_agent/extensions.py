@@ -8,6 +8,8 @@ import hashlib
 import json
 import re
 import sqlite3
+import time
+import uuid
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -51,6 +53,10 @@ class GitHubExtensionRegistry:
                 ref TEXT NOT NULL, manifest_path TEXT NOT NULL, manifest_sha256 TEXT NOT NULL,
                 manifest_json TEXT NOT NULL, installed_at REAL NOT NULL DEFAULT (unixepoch()),
                 UNIQUE(kind,name))""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS skill_executions (
+                id TEXT PRIMARY KEY, skill_name TEXT NOT NULL, operation TEXT NOT NULL,
+                status TEXT NOT NULL, input_summary TEXT NOT NULL, result_summary TEXT NOT NULL,
+                error TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL)""")
 
     def db(self): return sqlite3.connect(self.db_path)
 
@@ -105,10 +111,15 @@ class GitHubExtensionRegistry:
 
     def list(self, kind=None):
         with self.db() as conn:
-            if kind: rows=conn.execute("SELECT id,kind,name,description,version,repo,ref,manifest_sha256,installed_at FROM installed_extensions WHERE kind=? ORDER BY name",(kind,)).fetchall()
-            else: rows=conn.execute("SELECT id,kind,name,description,version,repo,ref,manifest_sha256,installed_at FROM installed_extensions ORDER BY kind,name").fetchall()
-        keys=("id","kind","name","description","version","repository","ref","manifest_sha256","installed_at")
-        return [dict(zip(keys,row)) for row in rows]
+            if kind: rows=conn.execute("SELECT id,kind,name,description,version,repo,ref,manifest_sha256,installed_at,manifest_json FROM installed_extensions WHERE kind=? ORDER BY name",(kind,)).fetchall()
+            else: rows=conn.execute("SELECT id,kind,name,description,version,repo,ref,manifest_sha256,installed_at,manifest_json FROM installed_extensions ORDER BY kind,name").fetchall()
+        keys=("id","kind","name","description","version","repository","ref","manifest_sha256","installed_at","manifest_json")
+        items=[]
+        for row in rows:
+            item=dict(zip(keys,row)); manifest=json.loads(item.pop("manifest_json"))
+            item["allowed_tools"]=manifest.get("tools",[]) if item["kind"]=="skill" else [manifest.get("operation")]
+            items.append(item)
+        return items
 
     def uninstall(self, ident):
         with self.db() as conn: cur=conn.execute("DELETE FROM installed_extensions WHERE id=?",(ident,))
@@ -119,18 +130,59 @@ class GitHubExtensionRegistry:
         if not row: raise KeyError("Extension not installed")
         return json.loads(row[0])
 
-    def execute_tool(self, name, arguments, approved=False):
-        if not approved: raise PermissionError("Installed tool execution requires explicit approval")
-        manifest=self.get_manifest("tool",name)
-        operation=manifest["operation"]
+    @staticmethod
+    def _run_operation(operation, arguments):
+        if not isinstance(arguments, dict): raise ExtensionError("arguments must be an object")
         value=arguments.get("text","")
         if operation == "text_stats":
             if not isinstance(value,str) or len(value)>20000: raise ExtensionError("text must be a string up to 20000 characters")
             return {"characters":len(value),"words":len(value.split()),"lines":len(value.splitlines())}
-        if operation == "uppercase": return str(value).upper()[:20000]
-        if operation == "lowercase": return str(value).lower()[:20000]
-        if operation == "word_count": return {"words":len(str(value).split())}
+        if operation in {"uppercase","lowercase","word_count"}:
+            if not isinstance(value,str) or len(value)>20000: raise ExtensionError("text must be a string up to 20000 characters")
+            if operation == "uppercase": return value.upper()
+            if operation == "lowercase": return value.lower()
+            return {"words":len(value.split())}
         if operation == "calculator":
+            expression=arguments.get("expression","")
+            if not isinstance(expression,str) or len(expression)>500: raise ExtensionError("expression must be a string up to 500 characters")
             from .tools import calculator
-            return calculator(str(arguments.get("expression","")),approved=True)
+            return calculator(expression,approved=True)
         raise ExtensionError("unsupported operation")
+
+    def execute_tool(self, name, arguments, approved=False):
+        if not approved: raise PermissionError("Installed tool execution requires explicit approval")
+        manifest=self.get_manifest("tool",name)
+        return self._run_operation(manifest["operation"],arguments)
+
+    def execute_skill(self, name, operation, arguments, approved=False):
+        manifest=self.get_manifest("skill",name)
+        if operation not in manifest.get("tools",[]):
+            raise ExtensionError("This operation is not permitted by the installed skill manifest")
+        if not approved:
+            raise PermissionError("Skill tool execution requires explicit operator approval")
+        ident=str(uuid.uuid4())
+        summary={key:({"type":"string","length":len(value)} if isinstance(value,str) else {"type":type(value).__name__})
+                 for key,value in arguments.items()}
+        try:
+            result=self._run_operation(operation,arguments)
+            result_text=(json.dumps({"type":"string","length":len(result)}) if isinstance(result,str) else json.dumps({"type":"object","keys":sorted(result.keys())}) if isinstance(result,dict) else json.dumps({"type":type(result).__name__}))
+            status="completed";error=""
+        except Exception as exc:
+            result=None;result_text="";status="failed";error=str(exc)[:500]
+            with self.db() as conn:
+                conn.execute("INSERT INTO skill_executions VALUES(?,?,?,?,?,?,?,?)",
+                    (ident,name,operation,status,json.dumps(summary),result_text,error,time.time()))
+            raise
+        with self.db() as conn:
+            conn.execute("INSERT INTO skill_executions VALUES(?,?,?,?,?,?,?,?)",
+                (ident,name,operation,status,json.dumps(summary),result_text,error,time.time()))
+        return {"execution_id":ident,"skill":name,"operation":operation,"status":status,"result":result}
+
+    def skill_history(self, name, limit=50):
+        self.get_manifest("skill",name)
+        limit=max(1,min(int(limit),100))
+        with self.db() as conn:
+            rows=conn.execute("""SELECT id,skill_name,operation,status,input_summary,result_summary,error,created_at
+                FROM skill_executions WHERE skill_name=? ORDER BY created_at DESC LIMIT ?""",(name,limit)).fetchall()
+        keys=("id","skill","operation","status","input_summary","result_summary","error","created_at")
+        return [dict(zip(keys,row)) for row in rows]

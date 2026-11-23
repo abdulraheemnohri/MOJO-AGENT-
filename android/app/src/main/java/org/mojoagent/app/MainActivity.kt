@@ -159,6 +159,9 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
  var toolApproval by remember { mutableStateOf(false) }
  var extensionId by remember { mutableStateOf("") }
  var skillName by remember { mutableStateOf("") }
+ var skillOperation by remember { mutableStateOf("text_stats") }
+ var skillInput by remember { mutableStateOf("") }
+ var skillApproval by remember { mutableStateOf(false) }
  var busy by remember { mutableStateOf(false) }
  val drawerState = rememberDrawerState(DrawerValue.Closed)
  val scope = rememberCoroutineScope()
@@ -363,6 +366,11 @@ fun MojoApp(call: (String, String, String, String?, (String) -> Unit) -> Unit, d
     OutlinedButton(onClick = { request("/extensions/$extensionId", "DELETE") }, enabled = !busy && extensionId.contains(":")) { Text("Uninstall extension") }
     OutlinedTextField(skillName, { skillName = it }, label = { Text("Installed skill name") }, modifier = Modifier.fillMaxWidth())
     Button(onClick = { request("/skills/$skillName/run", "POST", JSONObject().put("goal", goal).toString()) }, enabled = !busy && skillName.isNotBlank() && goal.isNotBlank()) { Text("Run skill plan") }
+    OutlinedTextField(skillOperation, { skillOperation = it }, label = { Text("Allowed operation from skill manifest") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(skillInput, { skillInput = it }, label = { Text(if (skillOperation == "calculator") "Arithmetic expression" else "Input text") }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("Approve this skill execution", Modifier.weight(1f)); Switch(checked = skillApproval, onCheckedChange = { skillApproval = it }) }
+    Button(onClick = { val args = if (skillOperation == "calculator") JSONObject().put("expression", skillInput) else JSONObject().put("text", skillInput); request("/skills/$skillName/execute", "POST", JSONObject().put("operation", skillOperation).put("arguments", args).put("approved", skillApproval).toString()) }, enabled = !busy && skillName.isNotBlank() && skillInput.isNotBlank() && skillApproval) { Text("Execute approved skill operation") }
+    OutlinedButton(onClick = { request("/skills/$skillName/history") }, enabled = !busy && skillName.isNotBlank()) { Text("Load skill execution history") }
    }
    "Runtime Logs" -> {
     Text("Runtime event log", style = MaterialTheme.typography.titleLarge)

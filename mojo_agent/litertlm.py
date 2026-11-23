@@ -41,8 +41,7 @@ class LiteRTLM:
         if not shutil.which(self.executable): raise LiteRTLMError("LiteRT-LM CLI not found. Install with: python -m pip install --upgrade litert-lm")
         value,is_hf=self.validate_model(model)
         command=[self.executable,"run"]
-        if is_hf: command += ["--from-huggingface-repo="+value,value.rsplit("/",1)[-1]+".litertlm"]
-        else: command.append(value)
+        command.append(value)
         command += ["--backend="+backend,"--prompt="+prompt]
         result=self._execute(command)
         return {**result,"model":value,"model_source":"huggingface" if is_hf else "local","backend":backend}
@@ -51,6 +50,6 @@ class LiteRTLM:
         if not shutil.which(self.executable): raise LiteRTLMError("LiteRT-LM CLI not found. Install with: python -m pip install --upgrade litert-lm")
         value,is_hf=self.validate_model(model)
         command=[self.executable,"benchmark"]
-        command += ["--from-huggingface-repo="+value,value.rsplit("/",1)[-1]+".litertlm"] if is_hf else [value]
+        command.append(value)
         result=self._execute(command)
         return {**result,"model":value}
