@@ -67,5 +67,5 @@ def test_skill_execution_requires_allowlist_and_approval(tmp_path, monkeypatch):
     assert result["result"]=="HELLO" and result["status"]=="completed"
     history=registry.skill_history("safe-skill")
     assert history[0]["operation"]=="uppercase"
-    assert '"length":5' in history[0]["input_summary"]
+    assert '"length": 5' in history[0]["input_summary"]
     assert "hello" not in history[0]["input_summary"]
