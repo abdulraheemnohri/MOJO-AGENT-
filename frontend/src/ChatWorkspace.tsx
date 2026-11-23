@@ -139,7 +139,7 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
  const availableModels=models.items||[];
  const selectedSkill=(tools.skills||[]).find((s:any)=>s.name===skillName);
  const allowedSkillOps=selectedSkill?.allowed_tools||[];
- const canUseModel=mode==='litertlm'&&models.items?.some((m:any)=>m.mode==='litertlm'&&m.available);
+ const canUseModel=mode==='litertlm'&&models.runtime_enabled&&models.items?.some((m:any)=>m.mode==='litertlm'&&m.available);
  return <div className="chat-workspace">
   <aside className="chat-sidebar">
    <div className="chat-sidebar-head"><div><b>Conversations</b><small>Local persistent history</small></div><button className="primary icon-action" onClick={createChat} disabled={busy} title="New chat"><Plus size={17}/></button></div>
@@ -154,7 +154,7 @@ export default function ChatWorkspace({apiBase,apiToken}:{apiBase:string;apiToke
     <div className="chat-toolbar-actions"><button className="secondary" onClick={()=>setSettingsOpen(v=>!v)}><Cpu size={15}/> Chat settings</button><button className="secondary" onClick={()=>setShowTools(v=>!v)}><Wrench size={15}/> Tools & skills</button><button className="secondary" onClick={()=>{if(active)refreshMessages(active)}} disabled={!active||busy}><RefreshCw size={14}/></button></div>
    </div>
    <div className="chat-modelbar">
-    <label>Chat mode<select value={mode} onChange={e=>setMode(e.target.value)}><option value="algorithms">Algorithms (offline, no LLM)</option><option value="litertlm" disabled={!models.items?.some((m:any)=>m.mode==='litertlm')}>Local LiteRT-LM</option></select></label>
+    <label>Chat mode<select value={mode} onChange={e=>setMode(e.target.value)}><option value="algorithms">Algorithms (offline, no LLM)</option><option value="litertlm" disabled={!models.runtime_enabled||!models.items?.some((m:any)=>m.mode==='litertlm')}>Local LiteRT-LM</option></select></label>
     {mode==='litertlm'&&<><label>Model<select value={model} onChange={e=>setModel(e.target.value)}><option value="">Use configured model</option>{availableModels.filter((m:any)=>m.mode==='litertlm').map((m:any)=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label><label>Backend<select value={backend} onChange={e=>setBackend(e.target.value)}><option value="cpu">CPU</option><option value="gpu">GPU</option></select></label></>}
     <span className="chat-safety"><ShieldCheck size={14}/> Tools never auto-run</span>
    </div>
