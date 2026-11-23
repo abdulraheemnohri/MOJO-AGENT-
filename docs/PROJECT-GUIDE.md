@@ -40,6 +40,7 @@ The control core is the policy boundary. Evolution may propose bounded strategy 
 | Database | Schema version/migrations, status, backup export/inspection and loopback-only verified restore |
 | Security | Optional bearer token auth, hashed token storage, rotation/revocation and security status |
 | Optional models | Algorithms/Hybrid/LiteRT-LM modes, approval-gated local inference and benchmark endpoints |
+| Chat Workspace | Persistent SQLite conversations/messages, local model catalog, attachments, bounded context and chat-to-tool/skill operations with explicit approval |
 | Extensions | Public JSON manifests, preview/hash verification, install/list/uninstall and allowlisted skill operations |
 | Operations | Runtime status, diagnostics, bounded metadata-only logs, analytics and validated settings |
 
@@ -185,3 +186,10 @@ CI success is not a substitute for physical-device testing, Windows smoke testin
 ## 12. Licensing and support
 
 The package metadata declares Apache-2.0. Voluntary donations can support development without locking core functionality behind a subscription. Keep changes tested, preserve the control-core boundary and document platform-specific requirements.
+
+
+## 13. Chat Workspace
+
+See [Chat Workspace guide](CHAT-WORKSPACE.md) for the complete API and feature contract. The dashboard and Android client include chat screens. Conversations, messages, model catalog entries and attachment blobs persist in SQLite. Algorithms mode requires no model; LiteRT-LM mode requires the runtime enabled and explicit approval for each inference. Built-in tools, installed extension tools and skills are exposed separately and require per-operation approval. Skill planning is non-executing.
+
+Attachments are limited to 10 MiB each. UTF-8 text, Markdown, JSON, CSV and log files can be extracted into prompt context. PDF, Office, image, audio and video files can be stored/downloaded, but multimodal/OCR/transcription/extraction is not implemented by the current LiteRT-LM adapter. No cloud model provider or provider API key support is enabled. Model catalog entries do not trigger model downloads.
