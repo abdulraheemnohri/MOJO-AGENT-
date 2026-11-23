@@ -274,6 +274,13 @@ def clear_chat_messages(conversation_id:str):
  if count is None:raise HTTPException(404,'Conversation not found')
  return {'deleted':count}
 
+@app.get('/api/v1/chat/conversations/{conversation_id}/export')
+def export_chat_conversation(conversation_id:str):
+ conversation=chat_store.get(conversation_id)
+ if not conversation:raise HTTPException(404,'Conversation not found')
+ payload={'format':'mojo-chat-v1','conversation':conversation,'messages':chat_store.messages(conversation_id,200),'attachments':chat_store.list_attachments(conversation_id)}
+ return Response(content=json.dumps(payload,ensure_ascii=False),media_type='application/json',headers={'Content-Disposition':f'attachment; filename="mojo-chat-{conversation_id[:8]}.json"'})
+
 @app.post('/api/v1/chat/conversations/{conversation_id}/attachments')
 async def upload_chat_attachment(conversation_id:str,request:Request,filename:str):
  if not chat_store.get(conversation_id):raise HTTPException(404,'Conversation not found')
