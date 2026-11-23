@@ -6,6 +6,8 @@ def create_valid_db(path):
     with sqlite3.connect(path) as conn:
         conn.execute("CREATE TABLE app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
         conn.execute("CREATE TABLE workflows(id TEXT PRIMARY KEY,name TEXT,steps TEXT,created REAL,updated REAL)")
+        for table in sorted(DatabaseManager.REQUIRED_TABLES - {"app_settings", "workflows"}):
+            conn.execute(f"CREATE TABLE {table}(id TEXT PRIMARY KEY)")
 
 def test_migrations_are_idempotent(tmp_path):
     manager=DatabaseManager(str(tmp_path/"mojo.db"))
@@ -39,3 +41,12 @@ def test_restore_keeps_safety_copy_and_checks_checksum(tmp_path):
     assert result["restored"] is True
     assert result["safety_backup"]
     assert manager.status()["version"]==2
+
+
+def test_backup_inspection_rejects_incomplete_application_schema(tmp_path):
+    path=tmp_path/"partial.sqlite3"
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        conn.execute("CREATE TABLE workflows(id TEXT PRIMARY KEY)")
+    with pytest.raises(ValueError, match="missing required MOJO AGENT tables"):
+        DatabaseManager.inspect_payload(path.read_bytes())
